@@ -1,0 +1,50 @@
+[package]
+name = "margin"
+version = "0.1.0"
+description = "Margin: a local, author-first writing studio"
+edition = "2024"
+publish = false
+
+[lib]
+name = "margin_lib"
+crate-type = ["rlib"]
+
+[[bin]]
+name = "margin"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "serde", "std"] }
+git2 = { version = "0.21.0", default-features = false }
+notify = "8.2.1"
+regex = "1.13.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+serde_norway = "0.9.42"
+sha2 = "0.11.0"
+similar = "3.2.1"
+specta = { version = "=2.0.0-rc.26", features = ["derive"] }
+specta-typescript = "=0.0.13"
+spellbook = "0.4.2"
+tauri = { version = "2.11.6", features = [] }
+tauri-plugin-dialog = "2.8.4"
+tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
+thiserror = "2.0.21"
+ulid = "3.0.0"
+zip = { version = "9.3.0", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[profile.dev.package."*"]
+opt-level = 2
