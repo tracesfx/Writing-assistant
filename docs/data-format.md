@@ -189,6 +189,18 @@ Zip archives of the project folder without `.margin/`, named `<project title> <Y
 
 `%APPDATA%/app.margin.studio/app-state.json` holds the recent-projects list, app settings (theme, editor, keymap, disabled modules), the backup configuration (`enabled`, `dir`, `intervalMinutes`), and, per project id, an opaque UI-session blob (open tabs, split, sidebars, module UI state such as cursor positions and bookmarks) used for session restore.
 
+## `ai-config.json` (app config folder, schemaVersion 1)
+
+Next to `app-state.json`. Model connection and presets: `enabled` (the master switch), `mode` (`managed` | `external`), `port` (managed, default 8080), `externalUrl` (must be loopback), `presetId`, `autoStart`, `idleSeconds` (idle work waits this long after the last keystroke), `contextLogLimit`, `presetRevision` and `presets`. A preset holds `template` (`chatMl` | `gemma` | `mistral`), `thinking` (`none` | `prefill` | `templateKwarg`), `stop`, `contextSize` (total, `-c`), `parallel` (slots), `binary`, `model`, `args`, optional per-role `sampling`. Built-in presets are merged in by `id`. When `presetRevision` is older than the app's, the built-ins' template, thinking switch, stop tokens, name and notes are refreshed; the author's paths, arguments, context size, slots and sampling are kept.
+
+## `.margin/context-log/<ulid>.json` (schemaVersion 1)
+
+One file per AI request, the newest last (ULIDs sort by time). A ring buffer: only the newest `contextLogLimit` (default 500) are kept. Fields: `id`, `timestamp`, `role` (`ghost` | `ideas` | `ask` | `extraction` | `test`), `priority` (`P0`–`P2`), `slot`, `model`, `sections` (the prompt split into labelled parts `[1]`–`[6]` of SPEC §7.4, each with `label`, `text`, `tokens`), `rawPrompt` (the exact string sent to the server), `rawOutput`, `outcome` (`completed` | `cancelled` | `failed`), `error`, and `timings` (`ttftMs`, `totalMs`, `promptTokens`, `cachedTokens`, `outputTokens`, `decodeTps`). Bake-off requests are not logged here; their prompts and outputs are in the run file.
+
+## `.margin/bakeoff/<ulid>.json` (schemaVersion 1)
+
+One bake-off run (without an open project: `<app config folder>/bakeoff/`). `runId`, `startedAt`, `source` (`sample` | `manuscript`), `finished`, `candidates` and `questions`. Each candidate has `speed` (VRAM, load time, cold and warm first-token times, decode speed, sentence time, the `--n-cpu-moe` used, the arguments, template warnings, and which go/no-go limits were missed) and `samples` (ten continuations). Each question has the text before the cut and its `options` shuffled as A, B, C…, each tagged with the `presetId` that wrote it, plus the author's `answer`. The file is not hidden from the author, but the app shows model names only after every question is answered.
+
 ## Writes
 
 Every file is written atomically: write a temp file `.<name>.<ulid>.margin-tmp` in the same folder, fsync it, then rename it over the target. A crash leaves either the old or the new file. Leftover temp files are deleted when the project opens.

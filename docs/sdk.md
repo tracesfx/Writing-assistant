@@ -89,8 +89,24 @@ const off = events.on("doc.saved", (e) => e.docId);
 | `stats.updated` | `todayWords` |
 | `history.snapshot` | `snapshotId, name` |
 | `backup.finished` | `path, error` |
+| `ai.status` | `status` (`off` | `starting` | `ready` | `thinking` | `pausedTyping` | `notRunning`), `detail` |
+| `ai.bakeoffProgress` | `presetId, stage, finished` |
 
 Events travel inside a versioned envelope `{ v: 1, seq, event }`.
+
+## AI — `ai`
+
+Connection, status, the context log and the bake-off. Wraps the generated commands like `story` does. None of these calls touch manuscript text.
+
+```ts
+await ai.connect();                  // start (managed) or connect (external)
+const panel = await ai.panel();      // status, VRAM, slots, capabilities, log tail
+await ai.keystroke();                // the author typed: cancels ghost text, pauses idle work
+const entries = await ai.contextLog.list(50);
+const entry = await ai.contextLog.get(entries[0].id); // exact prompt, sections, output, timings
+```
+
+Requests themselves are made by the backend scheduler (SPEC §6.4): P0 ghost text, P1 on request, P2 idle. The editor module of M3 and the Margin panel of M4 will use them. A provider interface (`InferenceClient`) keeps the backend open to other local or, later, cloud providers (SPEC §1.2).
 
 ## Workbench — `workbench`, `useWorkbench`
 
@@ -134,4 +150,4 @@ handle.revealComment(id) / removeComment(id) / isDirty() / flush()
 
 ## Breaking changes
 
-None yet. 0.2.0 only added APIs (settings, uiState, editorHost, prompt, right sidebar, `activate()`, notice keys, and the Story calls above).
+None yet. 0.3.0 only added the `ai` client and the `ai.*` events. 0.2.0 only added APIs (settings, uiState, editorHost, prompt, right sidebar, `activate()`, notice keys, and the Story calls above).

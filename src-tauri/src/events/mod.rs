@@ -55,6 +55,19 @@ pub enum DomainEvent {
     /// A history snapshot was taken.
     #[serde(rename = "history.snapshot", rename_all = "camelCase")]
     HistorySnapshot { snapshot_id: String, name: String },
+    /// The model server's status changed (SPEC §6.7).
+    #[serde(rename = "ai.status", rename_all = "camelCase")]
+    AiStatus {
+        status: crate::ai::types::AiStatus,
+        detail: String,
+    },
+    /// A bake-off step started or the run ended (SPEC §6.6).
+    #[serde(rename = "ai.bakeoffProgress", rename_all = "camelCase")]
+    BakeoffProgress {
+        preset_id: String,
+        stage: String,
+        finished: bool,
+    },
     #[serde(rename = "backup.finished", rename_all = "camelCase")]
     BackupFinished {
         path: Option<String>,

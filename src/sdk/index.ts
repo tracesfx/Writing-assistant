@@ -4,10 +4,11 @@
  * Versioned: breaking changes bump the major part of `sdkVersion` and need a
  * migration note in `docs/sdk.md`. Pre-1.0 while M1–M5 shape it.
  */
-export const sdkVersion = "0.2.0";
+export const sdkVersion = "0.3.0";
 
 export * from "./extensions";
 export { story, StoryError, type Story } from "./story";
+export { ai } from "./ai";
 export { events, type EventType, type EventOf } from "./events";
 export {
   useWorkbench,
@@ -35,7 +36,24 @@ export { uiState, useUiState } from "./uiState";
 export { editorHost, type EditorHandleApi, type TextTarget } from "./editorHost";
 export { newId } from "./ids";
 export type {
+  AiConfig,
+  AiStatus,
   AiToggle,
+  BakeoffRun,
+  BlindQuestion,
+  Candidate,
+  CandidateRun,
+  Capabilities,
+  Completion,
+  ConnectionMode,
+  ContextLogEntry,
+  ContextLogSummary,
+  ModelPanel,
+  Preset,
+  QualityScore,
+  RunSummary,
+  BakeoffState,
+  SpeedResult,
   BackupConfig,
   BackupInfo,
   BackupStatus,

@@ -1,8 +1,10 @@
 //! Margin backend.
 
+pub mod ai;
 pub mod app_state;
 pub mod backup;
 pub mod commands;
+pub mod commands_ai;
 pub mod commands_ext;
 pub mod dialect;
 pub mod error;
@@ -20,6 +22,8 @@ use std::time::Duration;
 use tauri::Manager;
 use tauri_specta::{Builder, Event, collect_commands, collect_events};
 
+use crate::ai::AiService;
+use crate::ai::bakeoff_service::BakeoffService;
 use crate::app_state::AppState;
 use crate::backup::Backups;
 use crate::events::{EventBus, MarginEvent};
@@ -32,6 +36,7 @@ use crate::watcher::ProjectWatcher;
 /// The IPC surface: every command and event exported to TypeScript.
 pub fn specta_builder() -> Builder<tauri::Wry> {
     use commands as c;
+    use commands_ai as a;
     use commands_ext as x;
     Builder::<tauri::Wry>::new()
         .commands(collect_commands![
@@ -87,6 +92,26 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             x::spell_check,
             x::spell_suggest,
             x::spell_add,
+            a::ai_config_get,
+            a::ai_config_set,
+            a::ai_panel,
+            a::ai_connect,
+            a::ai_disconnect,
+            a::ai_keystroke,
+            a::ai_try,
+            a::context_log_list,
+            a::context_log_get,
+            a::context_log_clear,
+            a::bakeoff_candidates,
+            a::bakeoff_start,
+            a::bakeoff_cancel,
+            a::bakeoff_state,
+            a::bakeoff_runs,
+            a::bakeoff_load,
+            a::bakeoff_questions,
+            a::bakeoff_answer,
+            a::bakeoff_scores,
+            a::bakeoff_use_model,
         ])
         .events(collect_events![MarginEvent])
         // Every type has the same shape in both directions.
@@ -117,13 +142,13 @@ pub fn run() {
     let spell = Spell::new(story.clone(), bus.clone());
     let watcher = ProjectWatcher::new(story.clone(), bus.clone());
 
-    let result = tauri::Builder::default()
+    let built = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
             let config_dir = app.path().app_config_dir()?;
-            let app_state = Arc::new(AppState::load(config_dir));
+            let app_state = Arc::new(AppState::load(config_dir.clone()));
             let backup_dir = app
                 .path()
                 .document_dir()
@@ -137,6 +162,15 @@ pub fn run() {
             app.manage(spell);
             app.manage(watcher);
             app.manage(backups.clone());
+            let ai = AiService::new(
+                config_dir.clone(),
+                story.clone(),
+                bus.clone(),
+                tauri::async_runtime::handle().inner().clone(),
+            );
+            let bakeoff = BakeoffService::new(ai.clone(), story.clone(), bus.clone(), config_dir);
+            app.manage(ai.clone());
+            app.manage(bakeoff);
             // Forward every domain event to the frontend.
             let handle = app.handle().clone();
             bus.subscribe(move |e| {
@@ -155,10 +189,20 @@ pub fn run() {
             });
             Ok(())
         })
-        .run(tauri::generate_context!());
-    if let Err(e) = result {
-        eprintln!("[margin] error while running the application: {e}");
-        std::process::exit(1);
+        .build(tauri::generate_context!());
+    match built {
+        Ok(app) => app.run(|handle, event| {
+            // Do not leave Margin's model server running after the app closes.
+            if let tauri::RunEvent::Exit = event
+                && let Some(ai) = handle.try_state::<Arc<AiService>>()
+            {
+                tauri::async_runtime::block_on(ai.inner().disconnect());
+            }
+        }),
+        Err(e) => {
+            eprintln!("[margin] error while running the application: {e}");
+            std::process::exit(1);
+        }
     }
 }
 

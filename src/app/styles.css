@@ -1993,3 +1993,47 @@ code.path {
 .goals-form {
   max-width: 640px;
 }
+
+/* --- AI: status item, Model panel, bake-off ---------------------------------------- */
+.status-ai { display: inline-flex; align-items: center; gap: 6px; }
+.ai-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.ai-ready .ai-dot { background: #4f8a3c; }
+.ai-thinking .ai-dot { background: var(--accent); }
+.ai-starting .ai-dot, .ai-pausedTyping .ai-dot { background: #c9a227; }
+.ai-notRunning .ai-dot { background: var(--danger); }
+.ai-off .ai-dot { background: transparent; border: 1px solid var(--muted); }
+.ai-view { height: 100%; overflow: auto; padding: 16px 24px 48px; }
+.ai-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.ai-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 10px; color: var(--muted); }
+.ai-tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.ai-body { display: flex; flex-direction: column; gap: 12px; max-width: 880px; }
+.ai-card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; }
+.ai-card h3, .ai-body h3 { margin: 0 0 8px; font-size: 0.95em; }
+.ai-line { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.ai-pill { padding: 2px 10px; border-radius: 999px; background: var(--bg-sunk); font-weight: 600; font-size: 0.9em; }
+.ai-pill.ai-ready { background: #dcebd3; color: #2f5a1f; }
+.ai-pill.ai-notRunning { background: #f3d9d3; color: #8a2f22; }
+.ai-actions { display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+.ai-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 8px 0 0; }
+.ai-facts dt { color: var(--muted); }
+.ai-facts dd { margin: 0; overflow-wrap: anywhere; }
+.ai-warn { color: var(--danger); }
+.ai-bar { height: 10px; border-radius: 5px; background: var(--bg-sunk); overflow: hidden; }
+.ai-bar span { display: block; height: 100%; background: var(--accent); }
+.ai-slots { margin: 8px 0 0; padding-left: 18px; }
+.ai-log { margin: 0; padding: 8px; max-height: 260px; overflow: auto; background: var(--bg-sunk); border-radius: 6px; font: 12px/1.45 Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ai-try { display: flex; gap: 8px; }
+.ai-try input { flex: 1; }
+.ai-out { margin-top: 8px; }
+.ai-scroll { overflow-x: auto; }
+.ai-table { border-collapse: collapse; width: 100%; font-size: 0.9em; }
+.ai-table th, .ai-table td { text-align: left; padding: 5px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.ai-table tbody tr[tabindex] { cursor: pointer; }
+.ai-table tbody tr[tabindex]:hover, .ai-table tbody tr[tabindex]:focus-visible { background: var(--select); }
+.ai-preview { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-candidates { list-style: none; padding: 0; margin: 0 0 8px; }
+.ai-option { display: block; margin-bottom: 8px; }
+.ai-cut { font-style: italic; }
+.ai-options { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.ai-options button { width: 100%; text-align: left; padding: 8px 12px; }
+.settings-control .wide { width: min(560px, 100%); }

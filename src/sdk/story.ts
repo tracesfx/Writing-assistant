@@ -50,7 +50,7 @@ const EMPTY_PROJECT_PATCH: ProjectPatch = {
 
 type Res<T> = { status: "ok"; data: T } | { status: "error"; error: MarginError };
 
-async function unwrap<T>(p: Promise<Res<T>>): Promise<T> {
+export async function unwrap<T>(p: Promise<Res<T>>): Promise<T> {
   const r = await p;
   if (r.status === "ok") return r.data;
   throw new StoryError(r.error);

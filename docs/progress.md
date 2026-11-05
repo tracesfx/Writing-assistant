@@ -90,5 +90,82 @@ Known dev-only quirk: a Vite HMR update to SDK or module files re-creates their 
 - 2026-11-04 — Writing stats count only the author's edits: moving, duplicating, splitting and merging documents is not writing (SPEC §1.2).
 - 2026-11-04 — SDK 0.2.0 (additive only): settings, uiState, editorHost, `workbench.ask`, right sidebar panels, module `activate()`, notice `key`. Documented in `docs/sdk.md`.
 
-## M2 — next
-Before starting, ask the user for: the `llama-server` binary path, model file paths, and the endpoint/API shape of their Ternary Bonsai harness (CLAUDE.md).
+## M2 — Model integration and bake-off (2026-11-05)
+
+### Preparation notes (2026-11-04)
+
+### Environment (from the user, verified by probing)
+- **Bonsai runtime** (PrismML llama.cpp fork, build `b12128-d7b289683`, CUDA 12.4): `D:/MODELS/bonsai/runtime/prism-b12128-d7b2896/llama-server.exe`. Also ships `llama-bench`, `llama-tokenize`, `llama-embedding`.
+- **Models** in `D:/MODELS/bonsai`: Ternary-Bonsai-2-27B `PTQ1_0` (5.9 GB, currently loaded) and `PQ2_0` (7.2 GB), 9B `PQ2_0` (2.4 GB), 4B `PQ2_0` (1.1 GB). No other LLM or embedding GGUFs on disk (Gemma 4 26B-A4B, Nemo 12B and Gemma 4 E4B are missing).
+- **Running llama-server** `http://127.0.0.1:8081`, launched by the harness: `-m …27B-PTQ1_0.gguf -c 32768 -ngl 99 --host 127.0.0.1 --port 8081 --reasoning auto`.
+  - 4 slots, each reporting n_ctx 32768: one unified 32K KV cache shared by all slots (not 32K each). fp16 KV, no explicit flash-attention or KV-quant flags. Host-RAM prompt cache is active (entries of 0.7–1 GB get evicted).
+  - VRAM: 10.6 / 12.3 GB used (whole GPU), about 1.6 GB free.
+  - Endpoints confirmed: `/health`, `/props`, `/slots`, `/tokenize`, `/completion` (raw prompt, `id_slot`, `cache_prompt`), `/v1/chat/completions`, `/v1/models`.
+- **Chat template** is ChatML / Qwen3-style (`<|im_start|>…<|im_end|>`). **Thinking is on by default.** Turn it off with `chat_template_kwargs: {enable_thinking: false}` on chat calls, or on raw `/completion` by prefilling `<|im_start|>assistant
+<think>
+
+</think>
+
+`. Verified: the prefill gives clean prose with no reasoning tokens. `reasoning_effort` is xhigh / medium / low.
+- **LLM Game harness** `http://127.0.0.1:8000` (FastAPI "LLM Game Harness" 0.0.1). REST under `/api/…`, one WebSocket per session at `/ws`, dev frontend on :5173 proxying both. Routers: system, sessions, tree, campaigns, documents, game, models.
+  - Provider `local` is OpenAI-compatible with `llama_server = true`: chat on `/v1/chat/completions`, token budgeting through `/tokenize`, structured calls through `response_schema` → llama-server `json_schema`/GBNF.
+  - It **owns the 8081 server**: `GET /api/server/local` (state, model, pid, restarts), `…/logs`, `…/models`, `POST …/start|stop|restart`.
+  - Margin needs none of the game routers. The only overlap is the GPU and the server lifecycle.
+
+### First measurements (one-off probes, not the bake-off)
+| Probe | Result |
+|---|---|
+| Cold prompt, 64 tokens | 529 ms (121 tok/s) |
+| Warm, 4 new tokens after a cached prefix | 110 ms |
+| Warm, 10 new tokens after a cached prefix | 399 ms |
+| Decode | 36–41 tok/s |
+
+The SPEC target is warm TTFT p50 ≤ 350 ms, p95 ≤ 700 ms. Bonsai's warm cost grows quickly with the number of new tokens since the cached prefix. Ghost text must keep that number small: keep the cached prefix close to the cursor, and keep the slot pinned so other work cannot evict it.
+
+### Plan (SPEC §16 M2), mapped to this environment
+1. **Connection layer (Rust `ai/`).** An `InferenceClient` over llama-server-native `/completion` (preferred) with an OpenAI-compatible fallback. A capability probe reads `/props` (template caps, thinking support, slot count), `/slots` and `/tokenize`. Reqwest restricted to 127.0.0.1; streaming via SSE, and cancellation by dropping the stream.
+2. **Managed mode.** A supervisor launches llama-server from a per-preset binary and model path with preset args, shows startup progress, and restarts on crash up to 3 times. Bonsai presets point at the PrismML binary; Gemma, Nemo and E4B would need a mainline build (or a check that this fork loads them).
+3. **External mode.** Any endpoint, e.g. the harness's 8081 server.
+4. **Presets.** Template handling (ChatML for Bonsai), the thinking switch (prefill / `enable_thinking=false`), stops, sampling per role (§6.5), context size.
+5. **AI Scheduler.** P0/P1/P2 queue with slot pinning (`id_slot`), pre-emption, pause on keystroke, and a cancel-latency test against a mock server (no GPU in CI).
+6. **Context log** (§9.6) and **health/status** (status-bar states, model panel: log tail, VRAM via `nvidia-smi`, slot states, last latency, restart).
+7. **Bake-off** (§6.6): speed test (VRAM, cold/warm TTFT, decode, ghost p50/p95 over 30 pauses), then a blind A/B/C/D quality test. Results go to `.margin/bakeoff/`, and "Use this model" writes the preset.
+8. **Mock llama-server** for tests: recorded/streamed fixtures with artificial latency and cancellation.
+
+### Decisions (user, 2026-11-04)
+1. **GPU sharing → option (a).** The author will not run the harness and Margin's AI at the same time. Margin runs its **own managed llama-server on port 8080** (preset binary + model + args). External mode stays supported (e.g. pointing at the harness's 8081 server), but Margin does **not** integrate with the harness API (no `/api/server/local` start/stop calls).
+2. **Bake-off downloads approved.** Download Gemma 4 26B-A4B (Q4), Mistral Nemo 12B (Q5) and Gemma 4 E4B GGUFs into `D:/MODELS`, one subfolder per family (e.g. `D:/MODELS/gemma4`, `D:/MODELS/nemo`). Check the files and licences and record their sources here. First test whether the PrismML build loads them. Fetch a mainline llama.cpp CUDA build only if it does not (and say so).
+3. **Bonsai variants join the bake-off:** 27B `PTQ1_0`, 27B `PQ2_0` and 9B `PQ2_0`.
+
+
+### Build checklist (2026-11-05)
+- [x] `ai/client.rs` — `InferenceClient` trait; llama-server native `/completion` (SSE streaming) with an OpenAI-chat fallback; capability probe (`/health`, `/props`, `/v1/models`, `/tokenize`, `/slots`, template check via `/apply-template`); cancellation by dropping the stream; loopback-only URL validation, no TLS, redirects and proxies off
+- [x] `ai/supervisor.rs` — managed mode: launch from preset binary + model + args, log ring (400 lines), restart on crash up to 3 times then give up once, stop kills the process, adopts a server already answering on the port
+- [x] `ai/scheduler.rs` — P0/P1/P2, slot pinning (ghost 0, others 1; single-slot servers fall back to 0), pre-emption, idle gating, keystroke cancel, kill switch, requeue of paused idle jobs
+- [x] `ai/context_log.rs` — ring buffer (500) in `.margin/context-log/`, sections [1]–[6], exact raw prompt, output, timings; clearable
+- [x] `ai/presets.rs`, `ai/template.rs` — six built-in presets; ChatML, Gemma 4 and Mistral raw templates; revisioned upgrade of saved presets
+- [x] `ai/bakeoff.rs`, `ai/bakeoff_service.rs` — speed test (VRAM, cold 6K TTFT, warm TTFT over 30 pauses, decode, sentence time), go/no-go, `--n-cpu-moe` tuner (binary search on VRAM), 10 blind continuations (A/B/C… shuffled, key hidden until all answered), scoring, "Use this model", results in `.margin/bakeoff/`
+- [x] Mock llama-server (`ai/mock.rs`, tests only) with artificial latency and disconnect detection
+- [x] Frontend module `ai`: status-bar item (Off / Starting / Ready / Thinking / Paused (typing) / Model not running), Model panel (server, VRAM, slots, last latency, log tail, Try it), context log viewer, Settings → Models and Bake-off, `Ctrl+Shift+Space` kill switch, palette commands
+- [x] Docs: `docs/data-format.md` (ai-config, context log, bake-off), `docs/sdk.md` (`ai` client, events; SDK 0.3.0), SPEC §6 updates
+- [ ] Final bake-off on all six candidates (waits for downloads)
+
+### Findings
+- **Gemma 4 template and thinking switch (SPEC §18 risk, resolved).** Verified against `/apply-template` on the PrismML build: format is `<|turn>system
+…<turn|>
+<|turn>user
+…<turn|>
+<|turn>model
+`, stop `<turn|>`. The template adds `<|think|>` to the system turn only when `enable_thinking` is true, so raw prompts leave it out; chat calls send `enable_thinking: false`. A raw prompt with an assistant prefill gave a clean continuation. Gemma 3's `<start_of_turn>` markers do not apply.
+- **The PrismML build (b12128) loads Gemma 4** (E4B tested, then used in the bake-off). No mainline llama.cpp build was needed or downloaded.
+- **Stale saved presets.** The first bake-off ran with a Gemma preset saved before the template fix. The probe's template check caught it (E4B warning). Saved presets now carry a revision and are upgraded on load (test: `upgrade_fixes_behaviour_but_keeps_the_authors_paths`).
+- **Sentence-time measurement.** The first version used prefixes that did not continue the cached chain, which unfairly punished slow-prompt models (27B PTQ1_0 read 2.8 s). It now keeps typing from where the 30 pauses ended, as a writer would (same model: 0.5 s).
+- **Windows reports a refused local connection after about 2 s.** Health polls use a 2 s timeout, so "Model not running" takes up to ~2 s to appear.
+- **Another app's llama-server** (port 18080, ~6.8 GB VRAM) was running at the start and gone later. It was left alone. The bake-off numbers below were taken with the GPU free (baseline ~1.5 GB, the desktop).
+- Dev note: editing Rust while `npm run tauri dev` runs restarts the app, which stops its managed server (kill_on_drop). Margin does not leave orphans on a normal exit; after a crash the next start adopts a leftover server.
+
+- **M1 bug found and fixed: the window could not be closed.** Tauri's `onCloseRequested` wrapper calls `window.destroy()` after our handler, and the capability file did not grant `core:window:allow-destroy`, so the close handler ran and then the window stayed open ("window.destroy not allowed"). Added the permission. Verified: closing the window now exits the app. `RunEvent::Exit` also stops Margin's managed model server (verified: no `llama-server` left on port 8080 after closing).
+
+### Tests
+- Rust: 106 pass (44 new in `ai::`), clippy and fmt clean. Vitest 29 pass, typecheck and ESLint clean.
+- Live (opt-in `MARGIN_LIVE_MODEL=1`): a keystroke ended a real generation in 0.3 ms (`Finished(Cancelled)`), and `/slots` showed slot 0 idle within 1 s. This is SPEC §17 check 3, confirmed against a real server.

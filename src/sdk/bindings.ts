@@ -78,6 +78,29 @@ export const commands = {
 	spellCheck: (texts: string[]) => typedError<SpellRange[][], MarginError>(__TAURI_INVOKE("spell_check", { texts })),
 	spellSuggest: (word: string) => typedError<string[], MarginError>(__TAURI_INVOKE("spell_suggest", { word })),
 	spellAdd: (word: string) => typedError<null, MarginError>(__TAURI_INVOKE("spell_add", { word })),
+	aiConfigGet: () => typedError<AiConfig, MarginError>(__TAURI_INVOKE("ai_config_get")),
+	aiConfigSet: (config: AiConfig) => typedError<AiConfig, MarginError>(__TAURI_INVOKE("ai_config_set", { config })),
+	aiPanel: () => typedError<ModelPanel, MarginError>(__TAURI_INVOKE("ai_panel")),
+	/**  Start (managed) or connect (external) using the saved settings. */
+	aiConnect: () => typedError<null, MarginError>(__TAURI_INVOKE("ai_connect")),
+	aiDisconnect: () => typedError<null, MarginError>(__TAURI_INVOKE("ai_disconnect")),
+	/**  Every keystroke: cancels ghost text, pauses idle work (SPEC §2.2). */
+	aiKeystroke: () => typedError<null, MarginError>(__TAURI_INVOKE("ai_keystroke")),
+	/**  The Model panel's "Try it" box. Logged like any other request. */
+	aiTry: (text: string) => typedError<Completion, MarginError>(__TAURI_INVOKE("ai_try", { text })),
+	contextLogList: (limit: number) => typedError<ContextLogSummary[], MarginError>(__TAURI_INVOKE("context_log_list", { limit })),
+	contextLogGet: (id: string) => typedError<ContextLogEntry, MarginError>(__TAURI_INVOKE("context_log_get", { id })),
+	contextLogClear: () => typedError<number, MarginError>(__TAURI_INVOKE("context_log_clear")),
+	bakeoffCandidates: () => typedError<Candidate[], MarginError>(__TAURI_INVOKE("bakeoff_candidates")),
+	bakeoffStart: (presetIds: string[], tune: boolean) => typedError<string, MarginError>(__TAURI_INVOKE("bakeoff_start", { presetIds, tune })),
+	bakeoffCancel: () => typedError<null, MarginError>(__TAURI_INVOKE("bakeoff_cancel")),
+	bakeoffState: () => typedError<BakeoffState, MarginError>(__TAURI_INVOKE("bakeoff_state")),
+	bakeoffRuns: () => typedError<RunSummary[], MarginError>(__TAURI_INVOKE("bakeoff_runs")),
+	bakeoffLoad: (runId: string) => typedError<BakeoffRun, MarginError>(__TAURI_INVOKE("bakeoff_load", { runId })),
+	bakeoffQuestions: (runId: string) => typedError<BlindQuestion[], MarginError>(__TAURI_INVOKE("bakeoff_questions", { runId })),
+	bakeoffAnswer: (runId: string, index: number, label: string | null) => typedError<null, MarginError>(__TAURI_INVOKE("bakeoff_answer", { runId, index, label })),
+	bakeoffScores: (runId: string) => typedError<QualityScore[], MarginError>(__TAURI_INVOKE("bakeoff_scores", { runId })),
+	bakeoffUseModel: (runId: string, presetId: string) => typedError<AiConfig, MarginError>(__TAURI_INVOKE("bakeoff_use_model", { runId, presetId })),
 };
 
 /** Events */
@@ -86,6 +109,33 @@ export const events = {
 };
 
 /* Types */
+export type AiConfig = {
+	schemaVersion: number,
+	/**  The master switch (SPEC §2.10). Off = no requests, no server start. */
+	enabled: boolean,
+	mode: ConnectionMode,
+	/**  Managed mode port (SPEC §1.2: Margin's own server on 8080). */
+	port: number,
+	/**  External mode endpoint. Must be a loopback address. */
+	externalUrl: string,
+	presetId: string,
+	/**  Start the managed server when the app opens. */
+	autoStart: boolean,
+	/**  Seconds without typing before idle work (P2) may run (SPEC §6.4). */
+	idleSeconds: number,
+	/**  Context-log ring size (SPEC §9.6). */
+	contextLogLimit: number,
+	/**  Presets as edited by the author, merged over the built-ins by id. */
+	presets: Preset[],
+	/**  Which revision of the built-in presets this file has seen (see `presets::upgrade`). */
+	presetRevision?: number,
+};
+
+/**  The status-bar states (SPEC §6.7). */
+export type AiStatus = "off" | "starting" | "ready" | "thinking" | 
+/**  Idle work is held back because the author is typing. */
+"pausedTyping" | "notRunning";
+
 export type AiToggle = "on" | "off";
 
 export type AppSession = {
@@ -130,6 +180,24 @@ export type BackupStatus = {
 	backups: BackupInfo[],
 };
 
+export type BakeoffRun = {
+	schemaVersion: number,
+	runId: string,
+	startedAt: string,
+	/**  "sample" or "manuscript". */
+	source: string,
+	finished: boolean,
+	candidates: CandidateRun[],
+	questions: Question[],
+};
+
+export type BakeoffState = {
+	running: boolean,
+	stage: string,
+	presetId: string | null,
+	run: BakeoffRun | null,
+};
+
 export type BinderNode = {
 	id: string,
 	kind: DocKind,
@@ -167,6 +235,50 @@ export type BinderTree = {
 	trash: TrashNode[],
 };
 
+export type BlindOption = {
+	label: string,
+	text: string,
+};
+
+/**  The author's view of a question: no model identities. */
+export type BlindQuestion = {
+	index: number,
+	cutText: string,
+	options: BlindOption[],
+	answered: boolean,
+	answer: string | null,
+};
+
+export type Candidate = {
+	presetId: string,
+	name: string,
+	available: boolean,
+	/**  Why it cannot run (missing binary or model file). */
+	missing: string | null,
+};
+
+export type CandidateRun = {
+	speed: SpeedResult,
+	samples: Sample[],
+};
+
+export type Capabilities = {
+	reachable: boolean,
+	/**  llama-server native `/completion` works. */
+	nativeCompletion: boolean,
+	/**  `/v1/chat/completions` works (fallback). */
+	openaiChat: boolean,
+	tokenize: boolean,
+	slotsEndpoint: boolean,
+	totalSlots: number,
+	nCtx: number,
+	model: string,
+	buildInfo: string,
+	hasChatTemplate: boolean,
+	/**  The server's own rendering of a sample chat differs from ours. */
+	templateWarning: string | null,
+};
+
 /**
  *  An inline comment. The anchor is a `comment` mark in the text; the body
  *  lives in `comments/<docId>.json`.
@@ -177,6 +289,47 @@ export type Comment = {
 	resolved?: boolean,
 	createdAt?: string,
 	updatedAt?: string,
+};
+
+export type Completion = {
+	text: string,
+	outcome: Outcome,
+	error: string | null,
+	timings: Timings,
+};
+
+export type ConnectionMode = "managed" | "external";
+
+export type ContextLogEntry = {
+	schemaVersion: number,
+	/**  A ULID: sorts by time. */
+	id: string,
+	timestamp: string,
+	role: Role,
+	priority: Priority,
+	slot: number,
+	model: string,
+	/**  The labelled sections [1]–[6] (SPEC §7.4). */
+	sections: PromptSection[],
+	/**  The exact string sent to the server (after templating and thinking prefill). */
+	rawPrompt: string,
+	rawOutput: string,
+	outcome: Outcome,
+	error: string | null,
+	timings: Timings,
+};
+
+export type ContextLogSummary = {
+	id: string,
+	timestamp: string,
+	role: Role,
+	model: string,
+	outcome: Outcome,
+	promptTokens: number,
+	outputTokens: number,
+	totalMs: number | null,
+	/**  First 120 characters of the output. */
+	preview: string,
 };
 
 export type DayPoint = {
@@ -272,7 +425,11 @@ export type DomainEvent = { type: "project.opened"; projectId: string; title: st
 /**  Writing statistics changed (words written, active time, goals). */
 { type: "stats.updated"; todayWords: number } | 
 /**  A history snapshot was taken. */
-{ type: "history.snapshot"; snapshotId: string; name: string } | { type: "backup.finished"; path: string | null; error: string | null };
+{ type: "history.snapshot"; snapshotId: string; name: string } | 
+/**  The model server's status changed (SPEC §6.7). */
+{ type: "ai.status"; status: AiStatus; detail: string } | 
+/**  A bake-off step started or the run ended (SPEC §6.6). */
+{ type: "ai.bakeoffProgress"; presetId: string; stage: string; finished: boolean } | { type: "backup.finished"; path: string | null; error: string | null };
 
 export type Goals = {
 	projectWords?: number | null,
@@ -296,6 +453,13 @@ export type LabelDef = {
 	color: string,
 };
 
+export type LastRequest = {
+	role: Role,
+	outcome: Outcome,
+	ttftMs: number | null,
+	totalMs: number | null,
+};
+
 export type Locale = "en-US" | "en-CA";
 
 /**  Errors crossing the IPC boundary. Serialized as `{ kind, message }`. */
@@ -316,6 +480,21 @@ export type MergeResult = {
 	trashed: string[],
 };
 
+/**  Everything the Model panel shows (SPEC §6.7). */
+export type ModelPanel = {
+	status: AiStatus,
+	detail: string,
+	mode: ConnectionMode,
+	endpoint: string,
+	presetId: string,
+	restarts: number,
+	logTail: string[],
+	vram: Vram | null,
+	slots: SlotInfo[],
+	capabilities: Capabilities,
+	lastRequest: LastRequest | null,
+};
+
 export type NewProject = {
 	/**  Folder in which the project folder is created. */
 	parentDir: string,
@@ -324,6 +503,8 @@ export type NewProject = {
 	projectType: ProjectType,
 	locale: Locale,
 };
+
+export type Outcome = "completed" | "cancelled" | "failed";
 
 export type PmMark = {
 	type: string,
@@ -337,6 +518,39 @@ export type PmNode = {
 	text?: string | null,
 	marks?: PmMark[] | null,
 };
+
+export type Preset = {
+	id: string,
+	name: string,
+	notes: string,
+	template: Template,
+	thinking: ThinkingSwitch,
+	/**  Stop sequences added to every request (the template's end-of-turn token). */
+	stop: string[],
+	/**  Total context across all slots (`-c`). */
+	contextSize: number,
+	/**  Slots (`--parallel`): 0 ghost text, 1 everything else. */
+	parallel: number,
+	/**  Managed mode: the `llama-server` binary. */
+	binary: string,
+	/**  Managed mode: the model file. */
+	model: string,
+	/**  Managed mode: extra arguments, one per entry. */
+	args: string[],
+	/**  Per-role sampling overrides; missing roles use the defaults. */
+	sampling?: RoleSampling[],
+	/**  Built-in presets can be edited but not deleted. */
+	builtin?: boolean,
+};
+
+/**  Scheduler priority (SPEC §6.4). Lower number = more urgent. */
+export type Priority = 
+/**  Ghost text: slot 0, cancelled by any keystroke. */
+"P0" | 
+/**  On request: slot 1, pre-empts P2. */
+"P1" | 
+/**  Idle work: slot 1, runs only while the author is idle. */
+"P2";
 
 export type ProjectInfo = {
 	id: string,
@@ -369,6 +583,37 @@ export type ProjectPrefs = {
 
 export type ProjectType = "fiction" | "non-fiction" | "both";
 
+export type PromptSection = {
+	label: string,
+	text: string,
+	/**  Estimated until the server tokenizes it. */
+	tokens: number,
+};
+
+export type QualityScore = {
+	presetId: string,
+	name: string,
+	wins: number,
+	answered: number,
+};
+
+export type Question = {
+	index: number,
+	/**  The last words before the cut. */
+	cutText: string,
+	/**  Continuations in shuffled order; `preset_id` keys the label. */
+	options: QuestionOption[],
+	/**  The label the author picked; `None` = not answered yet. */
+	answer: string | null,
+	answered: boolean,
+};
+
+export type QuestionOption = {
+	label: string,
+	text: string,
+	presetId: string,
+};
+
 export type RecentProject = {
 	root: string,
 	title: string,
@@ -387,6 +632,39 @@ export type ReplaceReport = {
 	docIds: string[],
 	/**  History snapshot taken just before; restoring it undoes the replace. */
 	snapshotId: string | null,
+};
+
+/**  What a request is for. Drives sampling defaults and the log label. */
+export type Role = "ghost" | "ideas" | "ask" | "extraction" | 
+/**  Model panel "try it", bake-off and other non-book requests. */
+"test";
+
+export type RoleSampling = {
+	role: Role,
+	sampling: Sampling,
+};
+
+export type RunSummary = {
+	runId: string,
+	startedAt: string,
+	source: string,
+	models: string[],
+	finished: boolean,
+};
+
+export type Sample = {
+	cutIndex: number,
+	text: string,
+};
+
+export type Sampling = {
+	temperature: number | null,
+	topP: number | null,
+	minP: number | null,
+	maxTokens: number,
+	stop?: string[],
+	/**  A JSON schema as JSON text. The server turns it into a grammar. */
+	jsonSchema?: string | null,
 };
 
 export type SaveResult = {
@@ -446,6 +724,12 @@ export type SessionRecord = {
 	activeSeconds: number,
 };
 
+export type SlotInfo = {
+	id: number,
+	busy: boolean,
+	nCtx: number,
+};
+
 export type SnapshotInfo = {
 	id: string,
 	name: string,
@@ -463,6 +747,30 @@ export type SnapshotKind =
 "named" | 
 /**  Taken by Margin before a large change (replace-all, restore). */
 "safety";
+
+export type SpeedResult = {
+	presetId: string,
+	name: string,
+	error: string | null,
+	loadSeconds: number | null,
+	vramBaselineMb: number,
+	vramUsedMb: number,
+	vramTotalMb: number,
+	headroomMb: number,
+	coldPromptTokens: number,
+	coldTtftMs: number | null,
+	warmTtftP50Ms: number | null,
+	warmTtftP95Ms: number | null,
+	ghostTotalP50Ms: number | null,
+	decodeTps: number | null,
+	sentenceP50Ms: number | null,
+	/**  The tuned `--n-cpu-moe`, when the preset has one. */
+	nCpuMoe: number | null,
+	args: string[],
+	templateWarning: string | null,
+	/**  Which go/no-go limits were missed. Empty = go. */
+	misses: string[],
+};
 
 /**  A misspelled word: UTF-16 offsets within the checked text. */
 export type SpellRange = {
@@ -489,6 +797,30 @@ export type StatsSummary = {
 	daysLeft: number | null,
 };
 
+/**  How the instruct template wraps a request when we send a raw prompt. */
+export type Template = "chatMl" | "gemma" | "mistral";
+
+/**  How reasoning is turned off (SPEC §6.2: thinking is disabled for all roles). */
+export type ThinkingSwitch = 
+/**  The model does not think. */
+"none" | 
+/**  Raw prompts prefill an empty think block (ChatML / Qwen3 style). */
+"prefill" | 
+/**  Chat calls send `chat_template_kwargs: {enable_thinking: false}`. */
+"templateKwarg";
+
+export type Timings = {
+	/**  Request sent → first token received. */
+	ttftMs: number | null,
+	totalMs: number | null,
+	promptTokens: number,
+	/**  Prompt tokens served from the slot's cache. */
+	cachedTokens: number,
+	outputTokens: number,
+	/**  Tokens per second as measured by the server, when it reports it. */
+	decodeTps: number | null,
+};
+
 export type TrashNode = {
 	node: BinderNode,
 	from: TrashOrigin,
@@ -500,6 +832,11 @@ export type TrashOrigin = {
 	/**  Parent node id, or `None` for the section root. */
 	parent?: string | null,
 	index: number,
+};
+
+export type Vram = {
+	usedMb: number,
+	totalMb: number,
 };
 
 /* Tauri Specta runtime */

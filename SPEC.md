@@ -45,6 +45,9 @@ Everything runs on the author's machine. Nothing leaves `localhost`.
 | Priorities | **1. Quality of life · 2. Extensibility · 3. Transparent, accessible memory** |
 | Binder storage | Every binder node (part, chapter, scene, note, folder) is a `<slug>--<id>.md` file with `kind:` in its frontmatter. `project.yaml` holds only the ordered ID tree per section (§13) |
 | Author data location | Comments (`comments/<docId>.json`), writing stats (`stats/sessions.json`), the scratchpad (`scratchpad.md`) and the personal dictionary (`dictionary.txt`) are plain project files, not `.margin/`: they are the author's data, travel with the folder, and are backed up and versioned. `.margin/` keeps only rebuildable caches and app state (§13) |
+| Local server ownership | Margin runs its own managed `llama-server` (default port 8080) and never shares it with other apps. The author does not run their game harness (which owns a server on 8081) at the same time. External mode remains for any compatible endpoint; there is no integration with the harness API |
+| Bake-off candidates | Gemma 4 26B-A4B, Mistral Nemo 12B and Gemma 4 E4B, plus Ternary Bonsai 2 27B (`PTQ1_0` and `PQ2_0`) and 9B (`PQ2_0`). Models live under `D:/MODELS` |
+| Future cloud APIs | Optional OpenAI and Anthropic API providers are wanted **after v1; not in M2** (nor in any current milestone). Planned as extra `InferenceClient` implementations behind the same scheduler and context log, opt-in per role, with keys in the OS credential store and a visible "leaves this machine" indicator. Doing so means amending Principle 8 and the network rule (§14) in the same change. M2 keeps the client behind a trait so this needs no rewrite |
 | Writing stats | "Words written" is the net change from the author's edits to manuscript documents. Moving, duplicating, splitting and merging documents is not writing |
 | Markdown dialect | Implemented once, in Rust. The editor exchanges ProseMirror-shaped JSON with the backend. Losslessness is defined on the canonical form: `serialize(parse(md)) == md` for canonical files, and `parse(serialize(doc)) == doc` |
 
@@ -91,6 +94,7 @@ Everything runs on the author's machine. Nothing leaves `localhost`.
 - EPUB export
 - Import from DOCX, Scrivener, or Google Docs
 - Third-party plugin *loading*. The framework exists, but v1 modules are first-party and compiled in.
+- Cloud model APIs (OpenAI, Anthropic): wanted later, not in v1 as scoped (see decisions log, "Future cloud APIs")
 - Cloud sync, collaboration, mobile
 - Grammar checking beyond spelling
 - Any AI feature that rewrites the author's text in place
@@ -230,7 +234,9 @@ Rules:
 - **External.** Connects to an existing endpoint, e.g. the author's custom harness.
   - `llama-server` native (`/completion`, `/tokenize`, `/health`, `/slots`) is preferred.
   - OpenAI-compatible (`/v1/completions`, `/v1/chat/completions`) is the fallback.
-- **Capability probe** on connect enables or disables features. Without raw completion, ghost text uses chat completion with assistant prefill where supported.
+- **Capability probe** on connect enables or disables features. Without raw completion, ghost text uses chat completion with assistant prefill where supported. The probe also asks the server to render a sample chat with its own template and warns in the Model panel if that differs from the template Margin sends.
+- **Adopting a leftover server.** If a server is already answering on Margin's managed port (for example from a session that ended abnormally), Margin attaches to it instead of starting a second one.
+- **Endpoints are loopback only** (127.0.0.1, `localhost`, `::1`). The HTTP client is built without TLS, with redirects and proxies off.
 
 ### 6.2 Default model profile: Gemma 4 26B-A4B (validated in M2)
 ```
@@ -240,9 +246,16 @@ llama-server -m gemma-4-26B-A4B-<Q4 variant>.gguf
   -c 32768 --parallel 2               # 2 slots ≈ 16K context each
   --host 127.0.0.1 --port 8080
 ```
-- **Thinking/reasoning must be disabled** for all roles. Verify the exact switch for Gemma 4.
+- **Thinking/reasoning must be disabled** for all roles. Verified 2026-11-05 against `llama-server` `/apply-template`: Gemma 4's template adds a `<|think|>` line to the system turn only when `enable_thinking` is true. Margin builds raw prompts and simply leaves that line out; chat-style calls send `chat_template_kwargs: {enable_thinking: false}`.
+- **Gemma 4 turn format** (verified): `<|turn>system
+…<turn|>
+<|turn>user
+…<turn|>
+<|turn>model
+`, stop token `<turn|>`. This replaces Gemma 3's `<start_of_turn>` markers.
 - `--n-cpu-moe`: the lowest value that keeps VRAM ≤ ~11.2 GB. Found by the bake-off.
 - Flags are starting points and must be verified against the llama.cpp build in use.
+- The PrismML build (b12128) loads Gemma 4 (checked with E4B), so the bake-off needs only that one `llama-server` binary.
 
 ### 6.3 Presets
 
@@ -254,7 +267,7 @@ llama-server -m gemma-4-26B-A4B-<Q4 variant>.gguf
 | Gemma 4 E4B | Fastest, weakest prose and memory quality |
 | Custom | Any GGUF or compatible endpoint |
 
-Each preset stores: template handling, stop sequences, thinking switch, sampling per role, and context size.
+Each preset stores: template handling, stop sequences, thinking switch, sampling per role, and context size. Saved presets carry a revision; when the app improves a built-in's template, thinking switch or stop tokens, existing configs pick that up and keep the author's paths and arguments (`docs/data-format.md`).
 
 ### 6.4 AI Scheduler
 
@@ -787,7 +800,7 @@ Build order puts quality of life and the framework first. Each milestone ends wi
 |---|---|
 | Gemma 4 26B-A4B with expert offload may have slow **cold** prompt processing (DDR4, possibly PCIe 3.0) | Prefix caching plus slot pinning, so ghost text pays only warm cost. Cold work runs in the background. Bake-off decides. Fallback: Mistral Nemo 12B fully on GPU |
 | 16K context per slot | Hierarchical summaries and retrieval. The model never needs the whole book |
-| Gemma 4 chat template and thinking switch | Verify in M2. Per-preset template config |
+| Gemma 4 chat template and thinking switch | **Resolved in M2** (§6.2). Per-preset template config stays, and the probe warns on a mismatch |
 | Bonsai needs the PrismML fork | Managed mode with a custom binary path |
 | Stable paragraph IDs across external edits | Sidecar maps plus fuzzy re-anchoring by text similarity. Citations degrade to the scene level rather than breaking |
 | Extraction quality from a ~4B-active model | Grammar-constrained JSON, small focused prompts per scene, canon protection, re-extract command |
