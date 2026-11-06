@@ -992,7 +992,7 @@ mod tests {
     #[test]
     fn n_cpu_moe_is_read_and_replaced_in_args() {
         let p = &builtin_presets()[0];
-        assert_eq!(n_cpu_moe_of(&p.args), Some(12));
+        assert_eq!(n_cpu_moe_of(&p.args), Some(17));
         assert_eq!(n_cpu_moe_of(&with_n_cpu_moe(p, 20).args), Some(20));
         // Tuned runs pin the placement: --fit off, added once.
         let tuned = with_n_cpu_moe(&with_n_cpu_moe(p, 20), 21);

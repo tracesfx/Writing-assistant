@@ -46,6 +46,7 @@ Everything runs on the author's machine. Nothing leaves `localhost`.
 | Binder storage | Every binder node (part, chapter, scene, note, folder) is a `<slug>--<id>.md` file with `kind:` in its frontmatter. `project.yaml` holds only the ordered ID tree per section (§13) |
 | Author data location | Comments (`comments/<docId>.json`), writing stats (`stats/sessions.json`), the scratchpad (`scratchpad.md`) and the personal dictionary (`dictionary.txt`) are plain project files, not `.margin/`: they are the author's data, travel with the folder, and are backed up and versioned. `.margin/` keeps only rebuildable caches and app state (§13) |
 | Local server ownership | Margin runs its own managed `llama-server` (default port 8080) and never shares it with other apps. The author does not run their game harness (which owns a server on 8081) at the same time. External mode remains for any compatible endpoint; there is no integration with the harness API |
+| Default model (M2 result) | The 2026-11-05 bake-off (GPU free, `--n-cpu-moe 17`) found Gemma 4 26B-A4B **misses the §6.6 speed limits** on the target machine: warm first token p50 381–413 ms (limit 350), p95 521–849 ms (limit 700) across two runs, decode 16–23 tok/s (limit 20). It stays the default until the author's blind quality vote in Settings → Models → Bake-off picks a winner. Models that pass all limits: Nemo 12B, Gemma 4 E4B, Bonsai 9B and both Bonsai 27B variants. Numbers are in `docs/progress.md` |
 | Bake-off candidates | Gemma 4 26B-A4B, Mistral Nemo 12B and Gemma 4 E4B, plus Ternary Bonsai 2 27B (`PTQ1_0` and `PQ2_0`) and 9B (`PQ2_0`). Models live under `D:/MODELS` |
 | Future cloud APIs | Optional OpenAI and Anthropic API providers are wanted **after v1; not in M2** (nor in any current milestone). Planned as extra `InferenceClient` implementations behind the same scheduler and context log, opt-in per role, with keys in the OS credential store and a visible "leaves this machine" indicator. Doing so means amending Principle 8 and the network rule (§14) in the same change. M2 keeps the client behind a trait so this needs no rewrite |
 | Writing stats | "Words written" is the net change from the author's edits to manuscript documents. Moving, duplicating, splitting and merging documents is not writing |
@@ -241,7 +242,8 @@ Rules:
 ### 6.2 Default model profile: Gemma 4 26B-A4B (validated in M2)
 ```
 llama-server -m gemma-4-26B-A4B-<Q4 variant>.gguf
-  --jinja -ngl 99 --n-cpu-moe <N>     # offload some expert weights to RAM; tune N to fit 12 GB
+  --jinja -ngl 99 --n-cpu-moe <N>     # offload some expert weights to RAM; tune N to fit 12 GB (measured: 17)
+  --fit off                           # placement is exactly what the flags say
   -fa on --cache-type-k q8_0 --cache-type-v q8_0
   -c 32768 --parallel 2               # 2 slots ≈ 16K context each
   --host 127.0.0.1 --port 8080
@@ -253,7 +255,7 @@ llama-server -m gemma-4-26B-A4B-<Q4 variant>.gguf
 …<turn|>
 <|turn>model
 `, stop token `<turn|>`. This replaces Gemma 3's `<start_of_turn>` markers.
-- `--n-cpu-moe`: the lowest value that keeps VRAM ≤ ~11.2 GB. Found by the bake-off.
+- `--n-cpu-moe`: the lowest value that keeps VRAM ≤ ~11.2 GB. Found by the bake-off (binary search, one model load per step). On the target machine, with the GPU free: **17**.
 - Flags are starting points and must be verified against the llama.cpp build in use.
 - The PrismML build (b12128) loads Gemma 4 (checked with E4B), so the bake-off needs only that one `llama-server` binary.
 
@@ -299,7 +301,7 @@ Each preset stores: template handling, stop sequences, thinking switch, sampling
    - decode tok/s
    - p50/p95 ghost latency over 30 simulated pauses
 3. **Blind quality test:**
-   - 10 cut points, with continuations shown anonymised as A/B/C/D; the author picks a winner or "none"
+   - 10 cut points, with continuations shown anonymised as A/B/C/D (A–F when more models are compared); the author picks a winner or "none", and model names appear only after the last answer
    - 3 "Ask my book" questions with known answers
 4. A results table with **Use this model** writes the preset plus the tuned `--n-cpu-moe`. Results are saved to `.margin/bakeoff/` and viewable in Insights.
 
@@ -748,7 +750,7 @@ Build order puts quality of life and the framework first. Each milestone ends wi
 - Managed and external connection, capability probe, health and status panel
 - AI Scheduler with slots and pre-emption, context log
 - Bake-off: tune Gemma 4 26B-A4B (`--n-cpu-moe`, KV quantisation, thinking off). Compare with Bonsai 27B, Nemo 12B, and E4B.
-- ✅ Default model confirmed or replaced by the bake-off winner.
+- Speed test done on all six candidates (2026-11-05). ✅ once the author's blind vote confirms the default or picks a replacement with **Use this model**.
 
 **M3 — Ghost text**
 - Triggers, streaming decoration, accept/dismiss/word-accept/cycle, post-processing

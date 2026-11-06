@@ -148,7 +148,24 @@ The SPEC target is warm TTFT p50 ≤ 350 ms, p95 ≤ 700 ms. Bonsai's warm cost 
 - [x] Mock llama-server (`ai/mock.rs`, tests only) with artificial latency and disconnect detection
 - [x] Frontend module `ai`: status-bar item (Off / Starting / Ready / Thinking / Paused (typing) / Model not running), Model panel (server, VRAM, slots, last latency, log tail, Try it), context log viewer, Settings → Models and Bake-off, `Ctrl+Shift+Space` kill switch, palette commands
 - [x] Docs: `docs/data-format.md` (ai-config, context log, bake-off), `docs/sdk.md` (`ai` client, events; SDK 0.3.0), SPEC §6 updates
-- [ ] Final bake-off on all six candidates (waits for downloads)
+- [x] Bake-off run on all six candidates, one run, GPU free (2026-11-05). Blind quality vote: **pending, the author's call**
+
+### Bake-off results (2026-11-05, run `01M6Q1BZJNP4BY77QT22GBSXD5`)
+Sample text (project under 3,000 words): the first ~7,000 words of *Pride and Prejudice*. GPU free (desktop only, ~1.5 GB). Cold = a 6K-token prompt on an empty slot. Warm = first token over 30 simulated pauses, 12 words typed each, cached prefix. Go/no-go limits from SPEC §6.6: p50 ≤ 350 ms, p95 ≤ 700 ms, decode ≥ 20 tok/s, sentence ≤ 2 s, headroom ≥ 0.6 GB.
+
+| Model | Warm p50 / p95 | Cold 6K | Decode | Sentence | VRAM used / headroom | Load | Go? |
+|---|---|---|---|---|---|---|---|
+| Gemma 4 26B-A4B Q4, `--n-cpu-moe 17` | 381 / 849 ms | 18.6 s | 23 tok/s | 1.0 s | 11.1 / 1.2 GB | 11 s | **No** (p50, p95) |
+| Mistral Nemo 12B Q5 | 104 / 166 ms | 6.2 s | 25.7 | 0.77 s | 11.0 / 1.3 GB | 29 s | Go |
+| Gemma 4 E4B Q4 | 93 / 145 ms | 3.2 s | 58 | 0.25 s | 5.0 / 7.3 GB | 18 s | Go |
+| Bonsai 9B PQ2_0 | 121 / 140 ms | 4.3 s | 85.9 | 0.45 s | 4.4 / 7.9 GB | 11 s | Go |
+| Bonsai 27B PTQ1_0 | 270 / 322 ms | 12.1 s | 39.2 | 0.54 s | 8.4 / 3.9 GB | 20 s | Go |
+| Bonsai 27B PQ2_0 | 266 / 298 ms | 11.8 s | 33.6 | 0.41 s | 9.7 / 2.6 GB | 23 s | Go |
+
+- **Gemma 4 26B-A4B misses the speed limits, and is noisy.** A separate earlier run of the tuner and test gave p50 413 / p95 521 ms and 16 tok/s; this run gave 381 / 849 ms and 23 tok/s. Both runs miss p50; either run misses one of p95 or decode. Cause is plausibly the experts living in system RAM (DDR4): 17 of the layers' experts are on the CPU. The tuner's binary search worked as designed: 40 fit, 20 fit, 10 no, 15 no, 18 fit, 17 fit, 16 no → 17.
+- **Bonsai 27B** passes every limit with 2.6–3.9 GB to spare, but its cold prompt (12 s) is the second slowest. Warm numbers varied between runs (PQ2_0 p50 was 268, 484 and 266 ms across three runs), so the ranking inside "Go" is not reliable on speed alone.
+- **Nemo 12B** is fast to the first token and has the slowest decode of the passing models (25.7 tok/s) and the least headroom (1.3 GB).
+- Quality is what separates the passing models, and that is the author's judgment: the blind test (10 questions, A–F labels) is in Settings → Bake-off → "Earlier runs". The active model is the SPEC default (Gemma 4 26B-A4B, tuned arguments saved) until the author picks.
 
 ### Findings
 - **Gemma 4 template and thinking switch (SPEC §18 risk, resolved).** Verified against `/apply-template` on the PrismML build: format is `<|turn>system
@@ -165,6 +182,12 @@ The SPEC target is warm TTFT p50 ≤ 350 ms, p95 ≤ 700 ms. Bonsai's warm cost 
 - Dev note: editing Rust while `npm run tauri dev` runs restarts the app, which stops its managed server (kill_on_drop). Margin does not leave orphans on a normal exit; after a crash the next start adopts a leftover server.
 
 - **M1 bug found and fixed: the window could not be closed.** Tauri's `onCloseRequested` wrapper calls `window.destroy()` after our handler, and the capability file did not grant `core:window:allow-destroy`, so the close handler ran and then the window stayed open ("window.destroy not allowed"). Added the permission. Verified: closing the window now exits the app. `RunEvent::Exit` also stops Margin's managed model server (verified: no `llama-server` left on port 8080 after closing).
+
+### Acceptance (M2)
+- [ ] **Default model confirmed or replaced** — speed done; waits for the blind vote (see above).
+- [x] **Without the model server running, everything non-AI works** (SPEC §17 check 8, early): the app runs with no server, the status bar shows "AI: Model not running", no dialog appears.
+- [x] **Keystroke stops generation, seen on a real server** (SPEC §17 check 3, at scheduler level; the editor side is M3): 0.3 ms to `Cancelled`, `/slots` idle within 1 s.
+- [x] **No network except 127.0.0.1** (SPEC §17 check 12, point in time): no non-loopback sockets from `margin.exe` or its WebView2 processes; the client rejects non-loopback endpoints (unit test).
 
 ### Tests
 - Rust: 106 pass (44 new in `ai::`), clippy and fmt clean. Vitest 29 pass, typecheck and ESLint clean.

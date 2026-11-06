@@ -62,13 +62,17 @@ pub fn builtin_presets() -> Vec<Preset> {
                 "-ngl",
                 "99",
                 "--n-cpu-moe",
-                "12",
+                // Tuned by the bake-off on the target machine (2026-11-05): the lowest
+                // value that keeps VRAM at or under ~11.2 GB.
+                "17",
                 "-fa",
                 "on",
                 "--cache-type-k",
                 "q8_0",
                 "--cache-type-v",
                 "q8_0",
+                "--fit",
+                "off",
             ],
         ),
         preset(

@@ -280,7 +280,7 @@ mod tests {
         assert!(a.starts_with("-m D:/MODELS/gemma4/"));
         assert!(a.contains("--host 127.0.0.1 --port 8080"));
         assert!(a.contains("-c 32768 --parallel 2"));
-        assert!(a.contains("--n-cpu-moe 12"));
+        assert!(a.contains("--n-cpu-moe 17"));
     }
 
     #[tokio::test]

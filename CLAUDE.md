@@ -3,7 +3,7 @@
 Margin is a Windows desktop app for writing books, with a quiet local AI assistant. **`SPEC.md` is the source of truth.** Read the sections relevant to your task before writing code. If the implementation must deviate from the spec, update `SPEC.md` (decisions log §1.2, or the relevant section) in the same change, and tell the user.
 
 ## Status
-- Phase: **M1 complete** (2026-11-04); M2 next. See `docs/progress.md`.
+- Phase: **M2 built and bake-off run** (2026-11-05); the author's blind quality vote and the "Use this model" choice are pending; M3 (ghost text) next. See `docs/progress.md`.
 - Track milestone progress in `docs/progress.md`, a checklist per milestone. Create it on first run.
 - After scaffolding, replace the "Commands" section below with the real, verified commands.
 
@@ -57,6 +57,8 @@ Verified 2026-11-04. Rust is at `%USERPROFILE%\.cargo\bin`; Git Bash may need `e
 - Rust lint / format: `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`, `cargo fmt --manifest-path src-tauri/Cargo.toml`
 - Regenerate IPC bindings without launching: `cargo test --manifest-path src-tauri/Cargo.toml --lib export_bindings`
 - Drive the running app (screenshots, clicks): launch with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`, then `playwright-core`'s `chromium.connectOverCDP("http://127.0.0.1:9222")`
+- Real-model tests are opt-in: `MARGIN_LIVE_MODEL=1` (optional `MARGIN_LIVE_URL`, default `http://127.0.0.1:8080`) with a server already running, e.g. `MARGIN_LIVE_MODEL=1 cargo test --manifest-path src-tauri/Cargo.toml --lib live_`
+- Editing Rust while `npm run tauri dev` runs restarts the app and stops its managed model server. Closing the window stops it too (`RunEvent::Exit`).
 - Windows note: `src-tauri/build.rs` embeds `windows-app-manifest.xml` into every linked target, because test binaries otherwise fail with `STATUS_ENTRYPOINT_NOT_FOUND`
 
 ## Conventions
@@ -87,7 +89,7 @@ Verified 2026-11-04. Rust is at `%USERPROFILE%\.cargo\bin`; Git Bash may need `e
 ## Environment notes
 - Windows 11, PowerShell is the primary shell. The project path contains spaces (`D:\Claude code\writing assistant`), so always quote paths.
 - Target hardware: RTX 3060 12 GB, Ryzen 5 3600X, 32 GB RAM.
-- Default model: Gemma 4 26B-A4B GGUF via `llama-server` (SPEC §6.2). The user also has Ternary Bonsai 27B running through their own custom harness on PrismML's llama.cpp fork. **Ask the user** for the `llama-server` binary path, model file paths, and the harness endpoint/API shape before M2. Don't guess or download multi-GB models without asking.
+- Default model per SPEC §6.2: Gemma 4 26B-A4B GGUF via `llama-server`; the M2 bake-off result decides whether it stays (see `docs/progress.md`). Binary (PrismML build b12128, loads Bonsai and Gemma 4) and models are under `D:/MODELS` (`bonsai/`, `gemma4/`, `nemo/`); paths are in the built-in presets (`src-tauri/src/ai/presets.rs`) and editable in Settings → Models. Margin runs its own managed server on port 8080. The user's game harness owns :8081 and other apps may run their own llama-server: never kill llama-server by name, and don't download multi-GB models without asking.
 - The git repo is initialised (remote: `origin` on GitHub). Commit and push only when the user asks.
 
 ## Workflow
