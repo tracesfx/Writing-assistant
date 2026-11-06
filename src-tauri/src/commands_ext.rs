@@ -324,3 +324,47 @@ pub async fn spell_suggest(spell: State<'_, SpellSvc>, word: String) -> Result<V
 pub async fn spell_add(spell: State<'_, SpellSvc>, word: String) -> Result<()> {
     blocking(spell.inner(), move |s| s.add_word(&word)).await
 }
+
+// --- Provenance of accepted AI text (SPEC §7.6) ---------------------------------------
+
+#[tauri::command]
+#[specta::specta]
+pub async fn provenance_get(
+    story: State<'_, Story>,
+    doc_id: String,
+) -> Result<Option<crate::stats::provenance::ProvenanceRecord>> {
+    blocking(story.inner(), move |s| {
+        crate::stats::provenance::get(s, &doc_id)
+    })
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn provenance_put(
+    story: State<'_, Story>,
+    record: crate::stats::provenance::ProvenanceRecord,
+) -> Result<()> {
+    blocking(story.inner(), move |s| {
+        crate::stats::provenance::put(s, &record)?;
+        s.bus()
+            .publish(crate::events::DomainEvent::ProvenanceChanged {
+                doc_id: record.doc_id.clone(),
+                ai_words: if record.ranges.is_empty() {
+                    0
+                } else {
+                    record.ai_words
+                },
+            });
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn provenance_totals(
+    story: State<'_, Story>,
+) -> Result<crate::stats::provenance::ProvenanceTotals> {
+    blocking(story.inner(), crate::stats::provenance::totals).await
+}

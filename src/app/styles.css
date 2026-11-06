@@ -2037,3 +2037,64 @@ code.path {
 .ai-options { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
 .ai-options button { width: 100%; text-align: left; padding: 8px 12px; }
 .settings-control .wide { width: min(560px, 100%); }
+
+/* Ghost text (SPEC §7.3): a decoration after the cursor, never document text. */
+.ProseMirror.manuscript .ghost-text {
+  color: inherit;
+  opacity: var(--ghost-opacity, 0.4);
+  white-space: pre;
+  pointer-events: none;
+  user-select: none;
+}
+.ProseMirror.manuscript .ghost-text--italic {
+  font-style: italic;
+}
+/* Never push text: clipped to the room left on the line, measured after layout. */
+.ProseMirror.manuscript .ghost-text--clip {
+  display: inline-block;
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  visibility: hidden;
+}
+.ProseMirror.manuscript .ghost-text--clip.ghost-text--ready {
+  visibility: visible;
+}
+.ProseMirror.manuscript .ghost-text--fresh {
+  animation: ghost-in 120ms ease-out both;
+}
+@keyframes ghost-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: var(--ghost-opacity, 0.4);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ProseMirror.manuscript .ghost-text--fresh {
+    animation: none;
+  }
+}
+
+/* Optional view of text accepted from suggestions (SPEC §7.6). */
+.manuscript .ai-assisted {
+  background: var(--accent-soft);
+  border-radius: 2px;
+}
+
+.status-ai-words {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ai-doc-list {
+  list-style: none;
+  margin: 0.25rem 0 1rem;
+  padding: 0;
+}
+.ai-doc-list li {
+  padding: 0.1rem 0;
+}
+/* TipTap sets white-space: normal on every contenteditable="false" element, with the
+   same specificity as the rules above: the ghost text needs the more specific selector. */

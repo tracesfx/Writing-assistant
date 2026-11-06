@@ -1,4 +1,5 @@
 import {
+  ai,
   defineModule,
   editorHost,
   lifecycle,
@@ -13,6 +14,7 @@ import {
 } from "@margin/sdk";
 
 import { nextBookmark, toggleBookmark } from "../../editor/bookmarks";
+import { ghostControl } from "../../editor/ghost";
 import type { DivStyle } from "../../editor/schema";
 import { DocumentView } from "./DocumentView";
 import { lastEdited, navigate, wireNavigation } from "./positions";
@@ -25,6 +27,14 @@ function activeHandle() {
 }
 
 const hasEditor = () => activeHandle() !== undefined;
+
+/** The ghost-text controller of the focused editor, if a suggestion is showing. */
+function visibleGhost() {
+  const h = activeHandle();
+  const c = h ? ghostControl(h.editor.view) : undefined;
+  return c?.visible ? c : undefined;
+}
+const ghostVisible = () => visibleGhost() !== undefined;
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const styleCommand = (style: DivStyle, title: string) => ({
@@ -111,6 +121,9 @@ export default defineModule({
   sdkVersion,
   required: true,
   activate() {
+    // Follow the model server's status from the start, so the first pause after
+    // the first keystroke already knows whether ghost text can be asked for.
+    ai.status();
     const unwire = wireNavigation((docId) => editorHost.forDoc(docId)[0]?.cursor());
     const off = lifecycle.onBeforeClose(() => editorHost.flushAll());
     return () => {
@@ -229,6 +242,80 @@ export default defineModule({
         run: () => {
           const last = lastEdited();
           if (last) jumpTo(last.docId, last.pos);
+        },
+      },
+      {
+        id: "editor.ghost.accept",
+        title: "Ghost text: accept suggestion",
+        category: "AI",
+        keybinding: "Tab",
+        when: ghostVisible,
+        run: () => visibleGhost()?.accept("all"),
+      },
+      {
+        id: "editor.ghost.acceptWord",
+        title: "Ghost text: accept next word",
+        category: "AI",
+        keybinding: "Ctrl+Right",
+        when: ghostVisible,
+        run: () => visibleGhost()?.accept("word"),
+      },
+      {
+        id: "editor.ghost.dismiss",
+        title: "Ghost text: dismiss suggestion",
+        category: "AI",
+        keybinding: "Esc",
+        when: ghostVisible,
+        run: () => visibleGhost()?.dismiss(),
+      },
+      {
+        id: "editor.ghost.next",
+        title: "Ghost text: next alternative (or ask for a suggestion)",
+        category: "AI",
+        keybinding: "Alt+]",
+        when: hasEditor,
+        run: () => {
+          const h = activeHandle();
+          if (h) ghostControl(h.editor.view)?.cycle(1);
+        },
+      },
+      {
+        id: "editor.ghost.prev",
+        title: "Ghost text: previous alternative",
+        category: "AI",
+        keybinding: "Alt+[",
+        when: ghostVisible,
+        run: () => visibleGhost()?.cycle(-1),
+      },
+      {
+        id: "editor.flow",
+        title: "Flow mode: ghost text off, everything else on",
+        category: "AI",
+        keybinding: "Ctrl+Alt+F",
+        run: () => {
+          const on = !settings.get().flowMode;
+          settings.update({ flowMode: on });
+          workbench.notify({ message: on ? "Flow mode on: no ghost text" : "Flow mode off", timeoutMs: 2000, key: "editor.flow" });
+        },
+      },
+      {
+        id: "editor.ghost.toggle",
+        title: "Toggle ghost text",
+        category: "AI",
+        run: () => {
+          const on = !settings.get().ghostEnabled;
+          settings.update({ ghostEnabled: on });
+          workbench.notify({ message: on ? "Ghost text on" : "Ghost text off", timeoutMs: 2000, key: "editor.ghost" });
+        },
+      },
+      {
+        id: "editor.highlightAi",
+        title: "Highlight AI-assisted text",
+        category: "View",
+        run: () => {
+          const on = !settings.get().highlightAi;
+          settings.update({ highlightAi: on });
+          workbench.notify({ message: on ? "Highlighting accepted AI text" : "AI text highlight off", timeoutMs: 2000, key: "editor.highlightAi" });
         },
       },
       {

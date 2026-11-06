@@ -14,6 +14,7 @@ import {
   type NewProject,
   type PmNode,
   type ProjectPatch,
+  type ProvenanceRecord,
   type SearchQuery,
 } from "./bindings";
 
@@ -137,6 +138,12 @@ export const story = {
     summary: () => unwrap(commands.statsSummary()),
     activity: (seconds: number) => unwrap(commands.statsActivity(seconds)),
     sessions: () => unwrap(commands.statsSessions()),
+  },
+  /** Ranges of accepted AI text per document (SPEC §7.6). */
+  provenance: {
+    get: (docId: string) => unwrap(commands.provenanceGet(docId)),
+    put: (record: ProvenanceRecord) => unwrap(commands.provenancePut(record)),
+    totals: () => unwrap(commands.provenanceTotals()),
   },
   spell: {
     check: (texts: string[]) => unwrap(commands.spellCheck(texts)),

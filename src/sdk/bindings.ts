@@ -78,6 +78,9 @@ export const commands = {
 	spellCheck: (texts: string[]) => typedError<SpellRange[][], MarginError>(__TAURI_INVOKE("spell_check", { texts })),
 	spellSuggest: (word: string) => typedError<string[], MarginError>(__TAURI_INVOKE("spell_suggest", { word })),
 	spellAdd: (word: string) => typedError<null, MarginError>(__TAURI_INVOKE("spell_add", { word })),
+	provenanceGet: (docId: string) => typedError<ProvenanceRecord | null, MarginError>(__TAURI_INVOKE("provenance_get", { docId })),
+	provenancePut: (record: ProvenanceRecord) => typedError<null, MarginError>(__TAURI_INVOKE("provenance_put", { record })),
+	provenanceTotals: () => typedError<ProvenanceTotals, MarginError>(__TAURI_INVOKE("provenance_totals")),
 	aiConfigGet: () => typedError<AiConfig, MarginError>(__TAURI_INVOKE("ai_config_get")),
 	aiConfigSet: (config: AiConfig) => typedError<AiConfig, MarginError>(__TAURI_INVOKE("ai_config_set", { config })),
 	aiPanel: () => typedError<ModelPanel, MarginError>(__TAURI_INVOKE("ai_panel")),
@@ -88,6 +91,9 @@ export const commands = {
 	aiKeystroke: () => typedError<null, MarginError>(__TAURI_INVOKE("ai_keystroke")),
 	/**  The Model panel's "Try it" box. Logged like any other request. */
 	aiTry: (text: string) => typedError<Completion, MarginError>(__TAURI_INVOKE("ai_try", { text })),
+	/**  Start a ghost-text request. Progress arrives as `ai.ghost` events. */
+	aiGhostStart: (request: GhostRequest) => typedError<null, MarginError>(__TAURI_INVOKE("ai_ghost_start", { request })),
+	aiGhostCancel: (requestId: string) => typedError<null, MarginError>(__TAURI_INVOKE("ai_ghost_cancel", { requestId })),
 	contextLogList: (limit: number) => typedError<ContextLogSummary[], MarginError>(__TAURI_INVOKE("context_log_list", { limit })),
 	contextLogGet: (id: string) => typedError<ContextLogEntry, MarginError>(__TAURI_INVOKE("context_log_get", { id })),
 	contextLogClear: () => typedError<number, MarginError>(__TAURI_INVOKE("context_log_clear")),
@@ -399,6 +405,11 @@ export type DocMetaPatch = {
 	ai: AiToggle | null,
 };
 
+export type DocProvenance = {
+	docId: string,
+	aiWords: number,
+};
+
 export type DocVersion = {
 	snapshot: SnapshotInfo,
 	title: string,
@@ -428,8 +439,40 @@ export type DomainEvent = { type: "project.opened"; projectId: string; title: st
 { type: "history.snapshot"; snapshotId: string; name: string } | 
 /**  The model server's status changed (SPEC §6.7). */
 { type: "ai.status"; status: AiStatus; detail: string } | 
+/**
+ *  Progress of one ghost-text request (SPEC §7). `text` is the whole
+ *  suggestion so far, already post-processed.
+ */
+{ type: "ai.ghost"; requestId: string; state: GhostState; text: string; error: string | null } | 
+/**  The AI-accepted ranges of a document were saved (SPEC §7.6). */
+{ type: "ai.provenanceChanged"; docId: string; aiWords: number } | 
 /**  A bake-off step started or the run ended (SPEC §6.6). */
 { type: "ai.bakeoffProgress"; presetId: string; stage: string; finished: boolean } | { type: "backup.finished"; path: string | null; error: string | null };
+
+/**  How much to suggest (SPEC §7.1). Phrase is the default. */
+export type GhostLength = "word" | "phrase" | "sentence";
+
+/**  One ghost-text request from the editor. */
+export type GhostRequest = {
+	/**  Chosen by the editor so it can match results to the pause that asked. */
+	requestId: string,
+	docId: string,
+	/**  The document's plain text up to the cursor; paragraphs are separated by a blank line. */
+	textBefore: string,
+	length: GhostLength,
+	/**  0 is the first suggestion; 1 and 2 are the lazy alternatives (SPEC §7.2). */
+	variant: number,
+	typography: Typography,
+};
+
+/**  How a ghost-text request is going (SPEC §7). */
+export type GhostState = 
+/**  Text so far; more may follow. */
+"streaming" | 
+/**  The finished suggestion. */
+"done" | 
+/**  The model had nothing worth showing (or AI is off for this document). */
+"empty" | "cancelled" | "failed";
 
 export type Goals = {
 	projectWords?: number | null,
@@ -588,6 +631,23 @@ export type PromptSection = {
 	text: string,
 	/**  Estimated until the server tokenizes it. */
 	tokens: number,
+};
+
+export type ProvenanceRecord = {
+	schemaVersion: number,
+	docId: string,
+	/**  SHA-256 (lowercase hex) of the plain text the ranges refer to. */
+	textHash: string,
+	/**  Sorted, non-overlapping ranges of AI-accepted text. */
+	ranges: TextRange[],
+	/**  Words inside those ranges when the record was saved. */
+	aiWords: number,
+};
+
+/**  AI-accepted words per manuscript document, and in all. */
+export type ProvenanceTotals = {
+	projectAiWords: number,
+	docs: DocProvenance[],
 };
 
 export type QualityScore = {
@@ -800,6 +860,15 @@ export type StatsSummary = {
 /**  How the instruct template wraps a request when we send a raw prompt. */
 export type Template = "chatMl" | "gemma" | "mistral";
 
+/**
+ *  A half-open range of UTF-16 code units in the plain text of a document
+ *  (paragraphs joined by a blank line).
+ */
+export type TextRange = {
+	start: number,
+	end: number,
+};
+
 /**  How reasoning is turned off (SPEC §6.2: thinking is disabled for all roles). */
 export type ThinkingSwitch = 
 /**  The model does not think. */
@@ -832,6 +901,13 @@ export type TrashOrigin = {
 	/**  Parent node id, or `None` for the section root. */
 	parent?: string | null,
 	index: number,
+};
+
+/**  Which smart-typography rules the author has on (SPEC §11.2). */
+export type Typography = {
+	quotes: boolean,
+	dashes: boolean,
+	ellipsis: boolean,
 };
 
 export type Vram = {

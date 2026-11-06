@@ -158,7 +158,76 @@ function WritingPage() {
       <Toggle k="typewriter" label="Typewriter scrolling" hint="Keeps the line you are writing at the same height. Shift+F9." />
       <h3>Spelling</h3>
       <Toggle k="spellcheck" label="Check spelling" hint="The dictionary (US or Canadian) is set per project." />
+      <GhostSettings />
     </section>
+  );
+}
+
+function GhostSettings() {
+  const g = useSettings((x) => ({
+    length: x.ghostLength,
+    debounce: x.ghostDebounce,
+    opacity: x.ghostOpacity,
+  }));
+  return (
+    <>
+      <h3>Ghost text</h3>
+      <Toggle
+        k="ghostEnabled"
+        label="Suggest the next few words"
+        hint="A dimmed suggestion appears after you pause. Tab accepts it, Esc dismisses it. Nothing is added unless you accept. Needs the model server (Settings → Models)."
+      />
+      <Toggle k="flowMode" label="Flow mode" hint="Ghost text off, everything else on. Ctrl+Alt+F." />
+      <Row label="Length" hint="How much to suggest. Alt+] and Alt+[ cycle through alternatives.">
+        <select
+          aria-label="Ghost text length"
+          value={g.length}
+          onChange={(e) => settings.update({ ghostLength: e.target.value as AppSettings["ghostLength"] })}
+        >
+          <option value="word">A word</option>
+          <option value="phrase">A phrase</option>
+          <option value="sentence">A sentence</option>
+        </select>
+      </Row>
+      <Row label="Pause before suggesting" hint="250 to 2000 ms. Typing again cancels the request.">
+        <input
+          type="number"
+          min={250}
+          max={2000}
+          step={50}
+          aria-label="Pause before suggesting, in milliseconds"
+          value={g.debounce}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            if (Number.isFinite(v)) settings.update({ ghostDebounce: Math.min(2000, Math.max(250, Math.round(v))) });
+          }}
+        />
+        <span className="muted">ms</span>
+      </Row>
+      <Row label="Brightness" hint="How strongly the suggestion shows against your text.">
+        <input
+          type="range"
+          min={20}
+          max={80}
+          step={5}
+          aria-label="Ghost text brightness"
+          value={Math.round(g.opacity * 100)}
+          onChange={(e) => settings.update({ ghostOpacity: Number(e.target.value) / 100 })}
+        />
+        <span className="muted">{Math.round(g.opacity * 100)}%</span>
+      </Row>
+      <Toggle k="ghostItalic" label="Italic suggestions" />
+      <Toggle
+        k="ghostNeverPush"
+        label="Never push text"
+        hint="Clip the suggestion to the rest of the current line, so nothing below it moves. Accepting still inserts all of it."
+      />
+      <Toggle
+        k="highlightAi"
+        label="Highlight AI-assisted text"
+        hint="Tint text you accepted from suggestions. Retyping it makes it yours. Nothing is written into your files."
+      />
+    </>
   );
 }
 

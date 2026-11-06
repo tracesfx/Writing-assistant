@@ -5,6 +5,7 @@
  */
 import { create } from "zustand";
 
+import type { GhostLength } from "./bindings";
 import { story } from "./story";
 
 export type Theme = "system" | "light" | "sepia" | "dark" | "contrast";
@@ -28,6 +29,20 @@ export interface AppSettings {
   focusMode: FocusMode;
   typewriter: boolean;
   spellcheck: boolean;
+  /** Ghost text (SPEC §7): suggestions shown dimmed after the cursor. */
+  ghostEnabled: boolean;
+  /** Typing pause before a suggestion is asked for, 250–2000 ms. */
+  ghostDebounce: number;
+  ghostLength: GhostLength;
+  /** 0.2–0.8 */
+  ghostOpacity: number;
+  ghostItalic: boolean;
+  /** Clip the suggestion to the rest of the current line so no text reflows. */
+  ghostNeverPush: boolean;
+  /** Flow mode: ghost text off, everything else on (Ctrl+Alt+F). */
+  flowMode: boolean;
+  /** Tint text that came from accepted suggestions (SPEC §7.6). */
+  highlightAi: boolean;
   /** Command id → chord, or `null` to unbind. Absent = default binding. */
   keymap: Record<string, string | null>;
   disabledModules: string[];
@@ -47,6 +62,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
   focusMode: "off",
   typewriter: false,
   spellcheck: true,
+  ghostEnabled: true,
+  ghostDebounce: 600,
+  ghostLength: "phrase",
+  ghostOpacity: 0.4,
+  ghostItalic: false,
+  ghostNeverPush: true,
+  flowMode: false,
+  highlightAi: false,
   keymap: {},
   disabledModules: [],
 };

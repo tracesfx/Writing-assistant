@@ -274,13 +274,14 @@ mod tests {
 
     #[test]
     fn launch_line_binds_loopback_and_carries_preset_flags() {
-        let p = &builtin_presets()[0];
+        let all = builtin_presets();
+        let p = all.iter().find(|p| p.id == "bonsai-9b-pq2").unwrap();
         let l = launch_for(p, 8080);
         let a = l.args.join(" ");
-        assert!(a.starts_with("-m D:/MODELS/gemma4/"));
+        assert!(a.starts_with("-m D:/MODELS/bonsai/Ternary-Bonsai-2-9B"));
         assert!(a.contains("--host 127.0.0.1 --port 8080"));
         assert!(a.contains("-c 32768 --parallel 2"));
-        assert!(a.contains("--n-cpu-moe 17"));
+        assert!(a.contains("--reasoning off"));
     }
 
     #[tokio::test]

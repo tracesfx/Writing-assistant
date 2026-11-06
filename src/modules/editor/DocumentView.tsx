@@ -4,6 +4,8 @@ import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import { useEffect, useReducer, useRef, useState } from "react";
 
 import {
+  ai,
+  aiSession,
   editorHost,
   events,
   lifecycle,
@@ -21,6 +23,17 @@ import {
 import { Bookmarks, bookmarkPositions } from "../../editor/bookmarks";
 import { wordDiff, type DiffOp } from "../../editor/diff";
 import { FocusMode, Typewriter } from "../../editor/focus";
+import { GhostText, ghostControl } from "../../editor/ghost";
+import {
+  Provenance,
+  aiRanges,
+  aiWordCount,
+  fromOffsets,
+  plainText,
+  setAiRanges,
+  sha256Hex,
+  toOffsets,
+} from "../../editor/provenance";
 import { countWords, schemaExtensions, wordLeafText } from "../../editor/schema";
 import { Spellcheck, refreshSpelling } from "../../editor/spellcheck";
 import { locate } from "../../editor/textmap";
@@ -98,6 +111,11 @@ function EditorSurface({ tabId, initial, active, focused }: SurfaceProps) {
   const hubRef = useRef<DocHub | null>(null);
   const countTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // AI-accepted ranges are saved once the text they refer to is on disk.
+  const provDirty = useRef(false);
+  const provTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const provQuiet = useRef(false);
+  const provWrite = useRef<() => void>(() => undefined);
   const update = useEditorStore((s) => s.update);
   const [title, setTitle] = useState(initial.meta.title);
   const [footnote, setFootnote] = useState<FootnoteEdit | null>(null);
@@ -119,6 +137,34 @@ function EditorSurface({ tabId, initial, active, focused }: SurfaceProps) {
         FocusMode.configure({ mode: () => settings.get().focusMode }),
         Typewriter.configure({ enabled: () => settings.get().typewriter }),
         Bookmarks.configure({ initial: bookmarksOf(docId), onChange: (p) => saveBookmarks(docId, p) }),
+        GhostText.configure({
+          docId,
+          client: ai.ghost,
+          enabled: () => {
+            const st = settings.get();
+            return st.ghostEnabled && !st.flowMode;
+          },
+          ready: () => ai.isReady(),
+          debounceMs: () => settings.get().ghostDebounce,
+          length: () => settings.get().ghostLength,
+          opacity: () => settings.get().ghostOpacity,
+          italic: () => settings.get().ghostItalic,
+          neverPush: () => settings.get().ghostNeverPush,
+          typography: () => {
+            const st = settings.get();
+            return { quotes: st.smartQuotes, dashes: st.smartDashes, ellipsis: st.smartEllipsis };
+          },
+          onAccept: ({ text }) => aiSession.add(countWords(text)),
+        }),
+        Provenance.configure({
+          highlight: () => settings.get().highlightAi,
+          onChange: () => {
+            if (provQuiet.current) return;
+            provDirty.current = true;
+            clearTimeout(provTimer.current);
+            provTimer.current = setTimeout(() => provWrite.current(), 800);
+          },
+        }),
         Spellcheck.configure({
           enabled: () => settings.get().spellcheck,
           check: (texts) => story.spell.check(texts),
@@ -166,6 +212,61 @@ function EditorSurface({ tabId, initial, active, focused }: SurfaceProps) {
     [docId],
   );
 
+  // Save the AI-accepted ranges (SPEC §7.6) once the document itself is saved, so
+  // the hash always matches the text on disk.
+  function provenanceRecord() {
+    if (!editor || editor.isDestroyed) return null;
+    const doc = editor.state.doc;
+    const ranges = aiRanges(editor.state);
+    return {
+      schemaVersion: 1,
+      docId,
+      textHash: sha256Hex(plainText(doc)),
+      ranges: toOffsets(doc, ranges),
+      aiWords: aiWordCount(doc, ranges),
+    };
+  }
+  provWrite.current = () => {
+    const hub = hubRef.current;
+    if (!hub || !provDirty.current) return;
+    if (hub.autosave.isDirty || hub.save.status !== "saved") return;
+    const rec = provenanceRecord();
+    if (!rec) return;
+    provDirty.current = false;
+    story.provenance.put(rec).catch(() => {
+      provDirty.current = true;
+    });
+  };
+
+  useEffect(() => {
+    if (!editor) return;
+    let cancelled = false;
+    story.provenance
+      .get(docId)
+      .then((rec) => {
+        if (cancelled || !rec || editor.isDestroyed) return;
+        const doc = editor.state.doc;
+        provQuiet.current = true;
+        try {
+          if (sha256Hex(plainText(doc)) === rec.textHash) {
+            setAiRanges(editor.view, fromOffsets(doc, rec.ranges));
+          } else {
+            // The file changed outside Margin: the ranges no longer fit. Say so once.
+            void story.provenance.put({ ...rec, ranges: [], aiWords: 0 }).catch(() => undefined);
+            useWorkbench
+              .getState()
+              .notify({ message: `“${initial.meta.title}” changed outside Margin, so its AI-assisted marks were cleared.`, timeoutMs: 8000 });
+          }
+        } finally {
+          provQuiet.current = false;
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [editor, docId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Hub membership, command handles and the before-close flush live exactly
   // as long as this mount.
   useEffect(() => {
@@ -175,9 +276,13 @@ function EditorSurface({ tabId, initial, active, focused }: SurfaceProps) {
     editors.set(tabId, { docId, editor, hub });
     const unsub = subscribeHub(hub, () => {
       useEditorStore.getState().update(tabId, { docId, save: hub.save });
+      provWrite.current();
       rerender();
     });
-    const unregister = lifecycle.onBeforeClose(() => hub.autosave.flush());
+    const unregister = lifecycle.onBeforeClose(async () => {
+      await hub.autosave.flush();
+      provWrite.current();
+    });
     const unhost = editorHost.register({
       docId,
       tabId,
@@ -232,17 +337,27 @@ function EditorSurface({ tabId, initial, active, focused }: SurfaceProps) {
       unregister();
       unsub();
       if (editors.get(tabId)?.editor === editor) editors.delete(tabId);
+      clearTimeout(provTimer.current);
+      if (provDirty.current) {
+        const rec = provenanceRecord();
+        if (rec) void hub.autosave.flush().then(() => story.provenance.put(rec)).catch(() => undefined);
+      }
       leaveHub(hub, editor);
       hubRef.current = null;
     };
-  }, [editor, tabId, docId, initial.content]);
+  }, [editor, tabId, docId, initial.content]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => () => useEditorStore.getState().remove(tabId), [tabId]);
 
   // Settings that change decorations or attributes: redraw.
   useEffect(() => {
     if (editor && !editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta("marginSettings", true));
-  }, [editor, s.focusMode, s.typewriter]);
+  }, [editor, s.focusMode, s.typewriter, s.ghostOpacity, s.ghostItalic, s.ghostNeverPush, s.highlightAi]);
+  // Turning ghost text off (or Flow mode on) takes back a suggestion that is showing.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    if (!s.ghostEnabled || s.flowMode) ghostControl(editor.view)?.dismiss();
+  }, [editor, s.ghostEnabled, s.flowMode]);
   useEffect(() => {
     if (editor && !editor.isDestroyed) refreshSpelling(editor.view);
   }, [editor, s.spellcheck]);

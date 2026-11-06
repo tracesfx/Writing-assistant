@@ -138,6 +138,20 @@ pub struct Completion {
     pub timings: Timings,
 }
 
+/// How a ghost-text request is going (SPEC §7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum GhostState {
+    /// Text so far; more may follow.
+    Streaming,
+    /// The finished suggestion.
+    Done,
+    /// The model had nothing worth showing (or AI is off for this document).
+    Empty,
+    Cancelled,
+    Failed,
+}
+
 // --- Connection, health, capabilities ----------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]

@@ -59,18 +59,19 @@ mod tests {
 
     #[test]
     fn chatml_with_thinking_prefill_ends_with_the_assistant_prefix() {
-        let s = render(&preset("bonsai-27b-ptq1"), &prompt());
+        let s = render(&preset("bonsai-9b-pq2"), &prompt());
         assert!(s.starts_with("<|im_start|>system\nBe quiet.<|im_end|>\n"));
         assert!(s.ends_with("<|im_start|>assistant\n<think>\n\n</think>\n\nShe opened the"));
     }
 
     #[test]
     fn templates_without_thinking_add_no_think_block() {
-        for id in ["nemo-12b", "gemma4-26b-a4b"] {
-            let s = render(&preset(id), &prompt());
-            assert!(!s.contains("<think>"), "{id}");
-            assert!(s.ends_with("She opened the"), "{id}");
-        }
+        // A preset whose model does not think (e.g. one the author adds for Gemma).
+        let mut p = preset("bonsai-9b-pq2");
+        p.thinking = ThinkingSwitch::None;
+        let s = render(&p, &prompt());
+        assert!(!s.contains("<think>"));
+        assert!(s.ends_with("She opened the"));
     }
 
     #[test]

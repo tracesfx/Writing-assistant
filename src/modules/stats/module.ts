@@ -1,6 +1,6 @@
 import { defineModule, sdkVersion, workbench } from "@margin/sdk";
 
-import { GoalsPage, StatsStatusItem, StatsView } from "./StatsView";
+import { AiWordsStatusItem, GoalsPage, StatsStatusItem, StatsView } from "./StatsView";
 import { startStats } from "./store";
 
 export const STATS_VIEW = "stats.overview";
@@ -13,7 +13,10 @@ export default defineModule({
   activate: startStats,
   contributes: {
     workspaceViews: [{ id: STATS_VIEW, title: "Writing stats", component: StatsView }],
-    statusBarItems: [{ id: "stats.today", align: "right", order: -10, component: StatsStatusItem }],
+    statusBarItems: [
+      { id: "stats.today", align: "right", order: -10, component: StatsStatusItem },
+      { id: "stats.aiWords", align: "right", order: -9, component: AiWordsStatusItem },
+    ],
     settingsPages: [{ id: "goals", title: "Goals", component: GoalsPage }],
     commands: [
       { id: "stats.open", title: "Writing stats and goals", category: "View", keybinding: "Ctrl+Alt+G", run: () => workbench.openView(STATS_VIEW) },

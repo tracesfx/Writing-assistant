@@ -61,6 +61,18 @@ pub enum DomainEvent {
         status: crate::ai::types::AiStatus,
         detail: String,
     },
+    /// Progress of one ghost-text request (SPEC §7). `text` is the whole
+    /// suggestion so far, already post-processed.
+    #[serde(rename = "ai.ghost", rename_all = "camelCase")]
+    AiGhost {
+        request_id: String,
+        state: crate::ai::types::GhostState,
+        text: String,
+        error: Option<String>,
+    },
+    /// The AI-accepted ranges of a document were saved (SPEC §7.6).
+    #[serde(rename = "ai.provenanceChanged", rename_all = "camelCase")]
+    ProvenanceChanged { doc_id: String, ai_words: u32 },
     /// A bake-off step started or the run ended (SPEC §6.6).
     #[serde(rename = "ai.bakeoffProgress", rename_all = "camelCase")]
     BakeoffProgress {

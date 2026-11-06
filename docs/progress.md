@@ -165,7 +165,7 @@ Sample text (project under 3,000 words): the first ~7,000 words of *Pride and Pr
 - **Gemma 4 26B-A4B misses the speed limits, and is noisy.** A separate earlier run of the tuner and test gave p50 413 / p95 521 ms and 16 tok/s; this run gave 381 / 849 ms and 23 tok/s. Both runs miss p50; either run misses one of p95 or decode. Cause is plausibly the experts living in system RAM (DDR4): 17 of the layers' experts are on the CPU. The tuner's binary search worked as designed: 40 fit, 20 fit, 10 no, 15 no, 18 fit, 17 fit, 16 no → 17.
 - **Bonsai 27B** passes every limit with 2.6–3.9 GB to spare, but its cold prompt (12 s) is the second slowest. Warm numbers varied between runs (PQ2_0 p50 was 268, 484 and 266 ms across three runs), so the ranking inside "Go" is not reliable on speed alone.
 - **Nemo 12B** is fast to the first token and has the slowest decode of the passing models (25.7 tok/s) and the least headroom (1.3 GB).
-- Quality is what separates the passing models, and that is the author's judgment: the blind test (10 questions, A–F labels) is in Settings → Bake-off → "Earlier runs". The active model is the SPEC default (Gemma 4 26B-A4B, tuned arguments saved) until the author picks.
+- Quality is what separates the passing models, and that is the author's judgment: the blind test (10 questions, A–F labels) is in Settings → Bake-off → "Earlier runs". **Decision (2026-11-05): the author chose Ternary Bonsai 9B.**
 
 ### Findings
 - **Gemma 4 template and thinking switch (SPEC §18 risk, resolved).** Verified against `/apply-template` on the PrismML build: format is `<|turn>system
@@ -184,7 +184,7 @@ Sample text (project under 3,000 words): the first ~7,000 words of *Pride and Pr
 - **M1 bug found and fixed: the window could not be closed.** Tauri's `onCloseRequested` wrapper calls `window.destroy()` after our handler, and the capability file did not grant `core:window:allow-destroy`, so the close handler ran and then the window stayed open ("window.destroy not allowed"). Added the permission. Verified: closing the window now exits the app. `RunEvent::Exit` also stops Margin's managed model server (verified: no `llama-server` left on port 8080 after closing).
 
 ### Acceptance (M2)
-- [ ] **Default model confirmed or replaced** — speed done; waits for the blind vote (see above).
+- [x] **Default model confirmed or replaced** — the author voted and chose **Ternary Bonsai 9B (`PQ2_0`)** as the default (2026-11-05). The Gemma 4 and Mistral Nemo presets were removed (see M3 below).
 - [x] **Without the model server running, everything non-AI works** (SPEC §17 check 8, early): the app runs with no server, the status bar shows "AI: Model not running", no dialog appears.
 - [x] **Keystroke stops generation, seen on a real server** (SPEC §17 check 3, at scheduler level; the editor side is M3): 0.3 ms to `Cancelled`, `/slots` idle within 1 s.
 - [x] **No network except 127.0.0.1** (SPEC §17 check 12, point in time): no non-loopback sockets from `margin.exe` or its WebView2 processes; the client rejects non-loopback endpoints (unit test).
@@ -192,3 +192,47 @@ Sample text (project under 3,000 words): the first ~7,000 words of *Pride and Pr
 ### Tests
 - Rust: 106 pass (44 new in `ai::`), clippy and fmt clean. Vitest 29 pass, typecheck and ESLint clean.
 - Live (opt-in `MARGIN_LIVE_MODEL=1`): a keystroke ended a real generation in 0.3 ms (`Finished(Cancelled)`), and `/slots` showed slot 0 idle within 1 s. This is SPEC §17 check 3, confirmed against a real server.
+
+## M3 — Ghost text (2026-11-05)
+
+### Decisions (user, 2026-11-05)
+- **Default model: Ternary Bonsai 9B (`PQ2_0`).** Remove the Gemma and Mistral models: the three built-in presets are the Bonsai family (9B default, 27B `PTQ1_0`, 27B `PQ2_0`). Preset revision 3 drops the retired presets from saved configs (the author's own custom presets are kept), moves the selection to 9B, and raises the 9B context from 16384 to 32768 (two slots of 16K, since ghost text sends up to ~8K tokens). The Gemma and Mistral prompt templates stay in the code for custom presets. The model files on disk (`D:/MODELS/gemma4`, `D:/MODELS/nemo`) were **not** deleted.
+
+### Build checklist
+- [x] `ai/ghost.rs` — context builder in SPEC §7.4 order (role, primer with spelling convention, scene notes with POV and synopsis, earlier scene text, prefilled assistant turn), token budgets (~8K total, primer ≤ 800, notes ≤ 600), whitespace-trimmed prefill so the prefix cache survives typing; sampling by length (word / phrase / sentence) with hotter, looser alternatives
+- [x] Post-processing (SPEC §7.5): leading-space fix, repeats of the author's last words, meta-text and template tokens, one line only, trimming to a clean boundary (abbreviation-aware), cut-off last word, en-CA ↔ en-US spelling swaps that skip mid-sentence capitalised words (names), smart typography that follows the author's three settings
+- [x] `AiService::ghost_start` / `ghost_cancel` and the `ai.ghost` event: streaming partial text, then done / empty / cancelled / failed; a cancel that overtakes its request still wins; AI-off documents get no request; every request is in the context log
+- [x] Editor extension `src/editor/ghost.ts`: widget decoration only; triggers (pause 250–2000 ms, end of a body paragraph, no selection or composition, ≥ 3 words in this or the previous paragraph, no backspace streak, 1.5 s quiet after a dismiss at the same spot, Flow mode); Tab, Ctrl+→, Esc, Alt+] / Alt+[ (lazy, up to three, one automatic retry on a repeat); shrinks while typing matches; clipped to the cursor's line with a faint "…" (never push text); fade-in without motion
+- [x] Provenance (SPEC §7.6): `src/editor/provenance.ts` ranges in plugin state mapped through edits (retyping or editing removes the mark), saved to `.margin/provenance/<docId>.json` as text offsets plus SHA-256 once the document is saved, dropped with one notice on a hash mismatch; optional highlight view; status bar "Session N yours · M AI"; Stats view shows project and per-document AI words
+- [x] Settings → Writing → Ghost text; commands `editor.ghost.*`, `editor.flow` (Ctrl+Alt+F), `editor.highlightAi`
+- [x] Docs: SPEC §1.2, §6.2, §6.3, §7, §16, §18; `docs/data-format.md` (provenance, ai-config revision 3, settings); `docs/sdk.md` (SDK 0.4.0)
+
+### Acceptance (M3): checks 2, 3, 4, 5, 8 — ✅ passed 2026-11-05; check 1 re-run with AI on — ✅
+All run in the real app (Playwright over CDP) against Bonsai 9B on :8080, in a throwaway project, with real key events.
+- [x] **2 — never with a selection, in a heading, or within 1.5 s of a dismiss at the same spot.** Selection: no suggestion after Shift+Home and a 1.5 s wait (app). Heading, block quote, list, mid-paragraph cursor and fewer than three words: unit tests on `ghostSite`. The 1.5 s rule: unit test with a controllable clock (1,499 ms blocked, 1,500 ms allowed).
+- [x] **3 — any character key during generation stops it (confirmed in the server).** With a request running (`/slots` showed slot 0 busy), one key sent slot 0 idle after 5, 6, 45, 60, 62, 75, 169 ms across runs. The job's outcome is `cancelled` in the context log.
+- [x] **4 — undo right after Tab removes exactly the accepted text.** In the app, and in a unit test where the Tab follows typing within 200 ms (the accept closes the history group).
+- [x] **5 — saved `.md` files contain no ghost text, provenance markup or AI artefacts.** The bodies of every Markdown file in the test project (28 at the time), after accepting suggestions: nothing. Provenance lives in `.margin/provenance/`. Editor unit tests also check the document JSON and HTML while a suggestion shows and after accepting.
+- [x] **8 — with the model server stopped, everything non-AI works.** Typing, autosave to disk, no suggestion, no dialog, one status-bar state "AI: Model not running".
+- [x] **1 (AI on) — 120 wpm typing, zero dropped or delayed keystrokes.** 640 characters in four bursts typed at 128 wpm with 1.3 s pauses between them (103 wpm over 75 s), suggestions arriving and being cancelled throughout: all 640 landed. Keydown → next frame: p50 2.9 ms, p95 3.6, p99 4.2, max 6.5 ms; none over 50 ms. (With AI off in M1: p50 1.6, p99 4.8.)
+
+Also measured: time to first token 130–395 ms for a suggestion (the first request after a model start is the slow one), and an alternative is complete about 250 ms after its key press; Bonsai 9B gives eight different continuations out of eight on a natural paragraph at every temperature tried.
+
+### Findings (bugs found by running the real app, fixed, with tests)
+- **ProseMirror swallows Esc.** Its keydown handler calls `preventDefault` for Enter and Esc, so Esc never reached the app keymap while typing: dismiss now lives in the ghost plugin (`handleKeyDown`). Unit test sends a real Escape key event.
+- **TipTap's `contenteditable="false"` rule beat my CSS.** TipTap injects `.ProseMirror [contenteditable="false"] { white-space: normal }`; the widget wrapped over three lines and pushed text. The ghost CSS now has the higher-specificity selector `.ProseMirror.manuscript .ghost-text`.
+- **Alt+] alternatives were cancelled about half the time.** IPC commands are separate requests and can overtake each other: the key's `ai_keystroke` could land after the `ai_ghost_start` that followed it and cancel it. A request made within 150 ms of a key press now waits for that key's notification (tests with a late-resolving client).
+- **Cold start.** The SDK started following the model's status on the first `isReady()` call, which answered "not running" for the first pause. The editor module now starts following on activation.
+- **A suggestion stayed in a background tab.** It is now dropped, and a request in flight cancelled, when the editor loses focus.
+- **Empty paragraphs would have broken provenance after a reload.** `textBetween` adds a blank line for every empty paragraph, and the Markdown file cannot hold them, so the text hash differed after a reload. The provenance text now skips empty blocks (tests for a trailing empty paragraph and for ranges surviving a rebuilt document).
+- **Duplicate alternatives did nothing visible.** Alternatives are now hotter (+0.3 per step) with a looser cut-off, and a repeat is retried once.
+- **Pre-existing, not changed:** the shell command "Leave distraction-free mode" is bound to `"Escape"`, but the keymap normalises the key to `esc` for events and `escape` for bindings, so the two never match (and ProseMirror consumes Esc in the editor anyway). F11 toggles it.
+
+### Not in M3 (by design)
+- Bible cards in the prompt (§7.4 [4]) and the Context Inspector shortcut `Ctrl+Shift+L` (§9.6) come with M4. The context log viewer in the Model panel already shows every ghost request's prompt, output and timings.
+- The model does not start by itself: Settings → Models → "Start with Margin" (`autoStart`) is off by default, as in M2: start the server from the Model panel, or turn that on.
+- `.margin/provenance/` is not backed up or versioned (SPEC §1.2 open question).
+
+### Tests (M3)
+- Rust: 136 pass (30 new: ghost prompt and post-processing, provenance storage, ghost requests end to end against the mock server including cancel and "cancel before request", preset migration and its write-back); clippy and fmt clean.
+- Vitest: 99 pass, 66 of them new (`ghost.test.ts` 48, `provenance.test.ts` 16, `sha256.test.ts` 2); typecheck and ESLint clean.

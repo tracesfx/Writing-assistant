@@ -1,6 +1,6 @@
 # `@margin/sdk`
 
-The only API that modules use (SPEC §5). `sdkVersion` is `0.2.0`. It stays pre-1.0 while milestones M1–M5 shape it; breaking changes are listed at the end of this file.
+The only API that modules use (SPEC §5). `sdkVersion` is `0.4.0`. It stays pre-1.0 while milestones M1–M5 shape it; breaking changes are listed at the end of this file.
 
 ## Modules
 
@@ -91,6 +91,8 @@ const off = events.on("doc.saved", (e) => e.docId);
 | `backup.finished` | `path, error` |
 | `ai.status` | `status` (`off` | `starting` | `ready` | `thinking` | `pausedTyping` | `notRunning`), `detail` |
 | `ai.bakeoffProgress` | `presetId, stage, finished` |
+| `ai.ghost` | `requestId, state` (`streaming` | `done` | `empty` | `cancelled` | `failed`), `text` (the whole suggestion so far, already post-processed), `error` |
+| `ai.provenanceChanged` | `docId, aiWords` — the AI-accepted ranges of a document were saved |
 
 Events travel inside a versioned envelope `{ v: 1, seq, event }`.
 
@@ -106,7 +108,19 @@ const entries = await ai.contextLog.list(50);
 const entry = await ai.contextLog.get(entries[0].id); // exact prompt, sections, output, timings
 ```
 
-Requests themselves are made by the backend scheduler (SPEC §6.4): P0 ghost text, P1 on request, P2 idle. The editor module of M3 and the Margin panel of M4 will use them. A provider interface (`InferenceClient`) keeps the backend open to other local or, later, cloud providers (SPEC §1.2).
+Ghost text (SPEC §7), used by the editor module:
+
+```ts
+ai.isReady();                          // the model can take a request now (follows ai.status events)
+ai.status();                           // "ready" | "thinking" | "pausedTyping" | "starting" | "notRunning" | "off"
+await ai.ghost.start({ requestId, docId, textBefore, length, variant, typography });
+await ai.ghost.cancel(requestId);      // a cancel that arrives before its request still wins
+const off = ai.ghost.subscribe((e) => e.state);   // `ai.ghost` events: streaming text, then done / empty / cancelled / failed
+```
+
+`story.provenance.get(docId)`, `.put(record)` and `.totals()` read and write the accepted-AI-text records (`docs/data-format.md`). `aiSession.add(words)` / `useAiSession` hold the words accepted this session, for the status bar.
+
+Requests themselves are made by the backend scheduler (SPEC §6.4): P0 ghost text, P1 on request, P2 idle. The Margin panel of M4 will use the rest. A provider interface (`InferenceClient`) keeps the backend open to other local or, later, cloud providers (SPEC §1.2).
 
 ## Workbench — `workbench`, `useWorkbench`
 
@@ -150,4 +164,4 @@ handle.revealComment(id) / removeComment(id) / isDirty() / flush()
 
 ## Breaking changes
 
-None yet. 0.3.0 only added the `ai` client and the `ai.*` events. 0.2.0 only added APIs (settings, uiState, editorHost, prompt, right sidebar, `activate()`, notice keys, and the Story calls above).
+None yet. 0.4.0 only added the ghost-text and provenance APIs above (`ai.ghost`, `ai.status`, `ai.isReady`, `story.provenance`, `aiSession`, the `ai.ghost` and `ai.provenanceChanged` events, and the ghost-text and Flow-mode settings). 0.3.0 only added the `ai` client and the `ai.*` events. 0.2.0 only added APIs (settings, uiState, editorHost, prompt, right sidebar, `activate()`, notice keys, and the Story calls above).

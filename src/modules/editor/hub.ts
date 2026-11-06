@@ -96,6 +96,9 @@ export function onLocalTransaction(h: DocHub, from: Editor, tr: Transaction): vo
       continue;
     }
     mirror.setMeta(REMOTE, true).setMeta("addToHistory", false);
+    // The other pane tracks the same AI-accepted ranges (SPEC §7.6).
+    const accepted: unknown = tr.getMeta("ghostAccept");
+    if (accepted) mirror.setMeta("ghostAccept", accepted);
     other.view.dispatch(mirror);
   }
 }

@@ -5,7 +5,18 @@
  */
 import { useState } from "react";
 
-import { story, useProject, useProjectStore, workbench, type Goals, type WorkspaceViewProps } from "@margin/sdk";
+import {
+  editorHost,
+  findNode,
+  story,
+  useAiSession,
+  useBinderTree,
+  useProject,
+  useProjectStore,
+  workbench,
+  type Goals,
+  type WorkspaceViewProps,
+} from "@margin/sdk";
 
 import { useStats } from "./store";
 
@@ -43,6 +54,58 @@ export function StatsStatusItem() {
         </span>
       )}
     </button>
+  );
+}
+
+/** Session words you wrote vs. words accepted from suggestions (SPEC §7.6). */
+export function AiWordsStatusItem() {
+  const s = useStats((x) => x.summary);
+  const accepted = useAiSession((x) => x.accepted);
+  if (!s) return null;
+  const yours = Math.max(0, s.sessionWords - accepted);
+  return (
+    <span
+      className="status-ai-words"
+      title="This session: words you wrote, and words you accepted from ghost-text suggestions"
+      aria-label={`This session, ${fmt(yours)} words yours and ${fmt(accepted)} accepted from suggestions`}
+    >
+      Session {fmt(yours)} yours · {fmt(accepted)} AI
+    </span>
+  );
+}
+
+function AiAssistedSection() {
+  const totals = useStats((x) => x.provenance);
+  const summary = useStats((x) => x.summary);
+  const tree = useBinderTree();
+  if (!totals || totals.projectAiWords === 0) {
+    return (
+      <>
+        <h3>AI-assisted text</h3>
+        <p className="muted">No accepted suggestions in this project yet. Text you accept from ghost text is counted here; what you write is not.</p>
+      </>
+    );
+  }
+  const manuscript = summary?.projectWords ?? 0;
+  const pct = manuscript > 0 ? Math.round((totals.projectAiWords / manuscript) * 1000) / 10 : null;
+  const docs = [...totals.docs].sort((a, b) => b.aiWords - a.aiWords).slice(0, 12);
+  return (
+    <>
+      <h3>AI-assisted text</h3>
+      <p>
+        {fmt(totals.projectAiWords)} words from accepted suggestions{pct !== null ? ` · ${pct}% of the manuscript` : ""}. Retyping or editing a passage makes it yours.
+      </p>
+      <ul className="ai-doc-list">
+        {docs.map((d) => (
+          <li key={d.docId}>
+            <button className="link" onClick={() => editorHost.openAt(d.docId, { pos: 1 })}>
+              {findNode(tree, d.docId)?.title ?? "Untitled"}
+            </button>
+            <span className="muted"> {fmt(d.aiWords)} words</span>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -135,6 +198,8 @@ export function StatsView(_props: WorkspaceViewProps) {
           </div>
         ))}
       </div>
+
+      <AiAssistedSection />
 
       <h3>Goals</h3>
       <GoalsForm />

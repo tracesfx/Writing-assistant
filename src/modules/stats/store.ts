@@ -5,13 +5,26 @@
  */
 import { create } from "zustand";
 
-import { events, lifecycle, story, type StatsSummary } from "@margin/sdk";
+import { aiSession, events, lifecycle, story, type ProvenanceTotals, type StatsSummary } from "@margin/sdk";
 
 interface StatsStore {
   summary: StatsSummary | null;
+  /** Words from accepted AI suggestions, per document and in all (SPEC §7.6). */
+  provenance: ProvenanceTotals | null;
 }
 
-export const useStats = create<StatsStore>(() => ({ summary: null }));
+export const useStats = create<StatsStore>(() => ({ summary: null, provenance: null }));
+
+let provTimer: ReturnType<typeof setTimeout> | undefined;
+export function refreshProvenance(delay = 300): void {
+  clearTimeout(provTimer);
+  provTimer = setTimeout(() => {
+    story.provenance
+      .totals()
+      .then((provenance) => useStats.setState({ provenance }))
+      .catch(() => useStats.setState({ provenance: null }));
+  }, delay);
+}
 
 let timer: ReturnType<typeof setTimeout> | undefined;
 export function refreshStats(delay = 300): void {
@@ -50,12 +63,18 @@ export function startStats(): () => void {
   const offs = [
     events.on("stats.updated", () => refreshStats()),
     events.on("doc.saved", () => refreshStats(1000)),
-    events.on("project.opened", () => refreshStats(500)),
+    events.on("project.opened", () => {
+      aiSession.reset();
+      refreshStats(500);
+      refreshProvenance(500);
+    }),
+    events.on("ai.provenanceChanged", () => refreshProvenance()),
     events.on("project.settingsChanged", () => refreshStats()),
-    events.on("project.closed", () => useStats.setState({ summary: null })),
+    events.on("project.closed", () => useStats.setState({ summary: null, provenance: null })),
     lifecycle.onBeforeClose(flush),
   ];
   refreshStats(0);
+  refreshProvenance(0);
   return () => {
     window.removeEventListener("keydown", onKey, { capture: true });
     clearInterval(step);

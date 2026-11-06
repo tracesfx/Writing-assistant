@@ -3,7 +3,7 @@
 Margin is a Windows desktop app for writing books, with a quiet local AI assistant. **`SPEC.md` is the source of truth.** Read the sections relevant to your task before writing code. If the implementation must deviate from the spec, update `SPEC.md` (decisions log §1.2, or the relevant section) in the same change, and tell the user.
 
 ## Status
-- Phase: **M2 built and bake-off run** (2026-11-05); the author's blind quality vote and the "Use this model" choice are pending; M3 (ghost text) next. See `docs/progress.md`.
+- Phase: **M3 built** (2026-11-05): ghost text, provenance and the Bonsai 9B default. M4 (Story Memory and the Margin panel) next. See `docs/progress.md`.
 - Track milestone progress in `docs/progress.md`, a checklist per milestone. Create it on first run.
 - After scaffolding, replace the "Commands" section below with the real, verified commands.
 
@@ -89,7 +89,7 @@ Verified 2026-11-04. Rust is at `%USERPROFILE%\.cargo\bin`; Git Bash may need `e
 ## Environment notes
 - Windows 11, PowerShell is the primary shell. The project path contains spaces (`D:\Claude code\writing assistant`), so always quote paths.
 - Target hardware: RTX 3060 12 GB, Ryzen 5 3600X, 32 GB RAM.
-- Default model per SPEC §6.2: Gemma 4 26B-A4B GGUF via `llama-server`; the M2 bake-off result decides whether it stays (see `docs/progress.md`). Binary (PrismML build b12128, loads Bonsai and Gemma 4) and models are under `D:/MODELS` (`bonsai/`, `gemma4/`, `nemo/`); paths are in the built-in presets (`src-tauri/src/ai/presets.rs`) and editable in Settings → Models. Margin runs its own managed server on port 8080. The user's game harness owns :8081 and other apps may run their own llama-server: never kill llama-server by name, and don't download multi-GB models without asking.
+- Default model per SPEC §6.2: **Ternary Bonsai 9B (`PQ2_0`)**, chosen by the author after the M2 bake-off; the built-in presets are the Bonsai family only. Binary (PrismML build b12128, also loads Gemma 4) and models are under `D:/MODELS` (`bonsai/`; `gemma4/` and `nemo/` are no longer used and were left on disk); paths are in the built-in presets (`src-tauri/src/ai/presets.rs`) and editable in Settings → Models. Margin runs its own managed server on port 8080. The user's game harness owns :8081 and other apps may run their own llama-server: never kill llama-server by name, and don't download multi-GB models without asking.
 - The git repo is initialised (remote: `origin` on GitHub). Commit and push only when the user asks.
 
 ## Workflow

@@ -24,8 +24,8 @@ Everything runs on the author's machine. Nothing leaves `localhost`.
 | OS | Windows 11 |
 | GPU | RTX 3060 12 GB |
 | CPU / RAM | Ryzen 5 3600X (6C/12T) · 32 GB |
-| Default model | **Gemma 4 26B-A4B** (MoE, ~4B active params), GGUF, via `llama-server` |
-| Also supported | Ternary Bonsai 27B (PrismML llama.cpp fork), Mistral Nemo 12B, Gemma 4 E4B, any OpenAI-compatible endpoint (incl. the author's custom harness) |
+| Default model | **Ternary Bonsai 9B** (`PQ2_0`) via the PrismML `llama-server` build, chosen by the author after the M2 bake-off |
+| Also supported | Ternary Bonsai 27B (`PTQ1_0`, `PQ2_0`), any other GGUF through a custom preset, any OpenAI-compatible endpoint (incl. the author's custom harness) |
 
 ### 1.2 Decisions log
 
@@ -34,7 +34,7 @@ Everything runs on the author's machine. Nothing leaves `localhost`.
 | Platform | Tauri 2 desktop app (Windows first) |
 | AI features (v1) | Ghost-text autocomplete · Margin side panel (ideas) · Story Memory |
 | Editorial critique | **Not in v1.** Must be addable later as an AI-task module (§5) |
-| Model strategy | **Single model, low latency.** Default Gemma 4 26B-A4B. The built-in bake-off confirms it or replaces it |
+| Model strategy | **Single model, low latency.** Default Ternary Bonsai 9B (the author's choice from the M2 bake-off). The built-in bake-off stays for comparing future models |
 | Genre | Fiction and non-fiction (project type: Fiction / Non-fiction / Both) |
 | Language | **English only** for v1 |
 | Spelling | **US/Canadian.** Default dictionary `en-US`, `en-CA` selectable per project. Double curly quotes “ ” and US punctuation conventions |
@@ -46,11 +46,13 @@ Everything runs on the author's machine. Nothing leaves `localhost`.
 | Binder storage | Every binder node (part, chapter, scene, note, folder) is a `<slug>--<id>.md` file with `kind:` in its frontmatter. `project.yaml` holds only the ordered ID tree per section (§13) |
 | Author data location | Comments (`comments/<docId>.json`), writing stats (`stats/sessions.json`), the scratchpad (`scratchpad.md`) and the personal dictionary (`dictionary.txt`) are plain project files, not `.margin/`: they are the author's data, travel with the folder, and are backed up and versioned. `.margin/` keeps only rebuildable caches and app state (§13) |
 | Local server ownership | Margin runs its own managed `llama-server` (default port 8080) and never shares it with other apps. The author does not run their game harness (which owns a server on 8081) at the same time. External mode remains for any compatible endpoint; there is no integration with the harness API |
-| Default model (M2 result) | The 2026-11-05 bake-off (GPU free, `--n-cpu-moe 17`) found Gemma 4 26B-A4B **misses the §6.6 speed limits** on the target machine: warm first token p50 381–413 ms (limit 350), p95 521–849 ms (limit 700) across two runs, decode 16–23 tok/s (limit 20). It stays the default until the author's blind quality vote in Settings → Models → Bake-off picks a winner. Models that pass all limits: Nemo 12B, Gemma 4 E4B, Bonsai 9B and both Bonsai 27B variants. Numbers are in `docs/progress.md` |
-| Bake-off candidates | Gemma 4 26B-A4B, Mistral Nemo 12B and Gemma 4 E4B, plus Ternary Bonsai 2 27B (`PTQ1_0` and `PQ2_0`) and 9B (`PQ2_0`). Models live under `D:/MODELS` |
+| Default model (M2 result, decided 2026-11-05) | The bake-off (GPU free) found Gemma 4 26B-A4B **missed the §6.6 speed limits** on the target machine (warm first token p50 381–413 ms against a limit of 350, p95 521–849 ms against 700, decode 16–23 tok/s against 20). Nemo 12B, Gemma 4 E4B, Bonsai 9B and both Bonsai 27B variants passed. The author then judged quality blind and chose **Ternary Bonsai 9B (`PQ2_0`)** as the default. The Gemma 4 and Mistral Nemo presets were removed from the built-ins (saved copies are dropped on upgrade, preset revision 3); their model files are left on disk, and the Gemma and Mistral prompt templates stay in the code for custom presets. 9B runs with `-c 32768 --parallel 2` (two slots of 16K), because ghost text may send ~8K tokens. Numbers are in `docs/progress.md` |
+| Bake-off candidates | The M2 run compared Gemma 4 26B-A4B, Mistral Nemo 12B and Gemma 4 E4B with Ternary Bonsai 2 (27B `PTQ1_0`, 27B `PQ2_0`, 9B `PQ2_0`). Only the three Bonsai presets are built in now. Models live under `D:/MODELS` |
 | Future cloud APIs | Optional OpenAI and Anthropic API providers are wanted **after v1; not in M2** (nor in any current milestone). Planned as extra `InferenceClient` implementations behind the same scheduler and context log, opt-in per role, with keys in the OS credential store and a visible "leaves this machine" indicator. Doing so means amending Principle 8 and the network rule (§14) in the same change. M2 keeps the client behind a trait so this needs no rewrite |
 | Writing stats | "Words written" is the net change from the author's edits to manuscript documents. Moving, duplicating, splitting and merging documents is not writing |
 | Markdown dialect | Implemented once, in Rust. The editor exchanges ProseMirror-shaped JSON with the backend. Losslessness is defined on the canonical form: `serialize(parse(md)) == md` for canonical files, and `parse(serialize(doc)) == doc` |
+| Ghost text keys and focus (M3) | While a suggestion shows, **Esc is handled inside the editor** (ProseMirror consumes Esc before the app keymap sees it), so it cannot be rebound. Tab, Ctrl+→ and Alt+] / Alt+[ are ordinary rebindable commands (`editor.ghost.*`). A suggestion is dropped when the editor loses focus. A request made right after a key press waits for that key's notification to reach the backend: IPC calls are separate requests and can overtake each other, which cancelled Alt+] alternatives |
+| Provenance storage (M3) | Accepted AI text is tracked as editor plugin ranges (never a mark or node), mapped through edits, and saved to `.margin/provenance/<docId>.json` as UTF-16 offsets into the document's plain text (non-empty text blocks joined by a blank line, so empty paragraphs do not matter) plus the SHA-256 of that text, once the document itself is saved. A hash mismatch drops the record with one notice. It is not rebuildable, yet `.margin/` is left out of backups and history: moving it to the project's own files is an open question for the author |
 
 ---
 
@@ -239,37 +241,28 @@ Rules:
 - **Adopting a leftover server.** If a server is already answering on Margin's managed port (for example from a session that ended abnormally), Margin attaches to it instead of starting a second one.
 - **Endpoints are loopback only** (127.0.0.1, `localhost`, `::1`). The HTTP client is built without TLS, with redirects and proxies off.
 
-### 6.2 Default model profile: Gemma 4 26B-A4B (validated in M2)
+### 6.2 Default model profile: Ternary Bonsai 9B (chosen after the M2 bake-off)
 ```
-llama-server -m gemma-4-26B-A4B-<Q4 variant>.gguf
-  --jinja -ngl 99 --n-cpu-moe <N>     # offload some expert weights to RAM; tune N to fit 12 GB (measured: 17)
-  --fit off                           # placement is exactly what the flags say
-  -fa on --cache-type-k q8_0 --cache-type-v q8_0
-  -c 32768 --parallel 2               # 2 slots ≈ 16K context each
+llama-server -m Ternary-Bonsai-2-9B-PQ2_0.gguf       # PrismML build b12128
+  --jinja -ngl 99 -fa on --no-webui --reasoning off
+  -c 32768 --parallel 2               # 2 slots of 16K: ghost text may send ~8K tokens
   --host 127.0.0.1 --port 8080
 ```
-- **Thinking/reasoning must be disabled** for all roles. Verified 2026-11-05 against `llama-server` `/apply-template`: Gemma 4's template adds a `<|think|>` line to the system turn only when `enable_thinking` is true. Margin builds raw prompts and simply leaves that line out; chat-style calls send `chat_template_kwargs: {enable_thinking: false}`.
-- **Gemma 4 turn format** (verified): `<|turn>system
-…<turn|>
-<|turn>user
-…<turn|>
-<|turn>model
-`, stop token `<turn|>`. This replaces Gemma 3's `<start_of_turn>` markers.
-- `--n-cpu-moe`: the lowest value that keeps VRAM ≤ ~11.2 GB. Found by the bake-off (binary search, one model load per step). On the target machine, with the GPU free: **17**.
+- **Thinking is off** for all roles. The template is ChatML (Qwen3 style). Raw prompts prefill an empty think block (`<think>\n\n</think>\n\n`); the server also runs with `--reasoning off`.
+- **Measured on the target machine** (bake-off, GPU free): 4.4 GB VRAM and 7.9 GB headroom, warm first token p50 121 ms and p95 140 ms, 86 tok/s, a cold 6K-token prompt in 4.3 s. In the app (M3, real keystrokes): a phrase suggestion is complete about 250 ms after the first token request, and an alternative about 100 ms after the key.
 - Flags are starting points and must be verified against the llama.cpp build in use.
-- The PrismML build (b12128) loads Gemma 4 (checked with E4B), so the bake-off needs only that one `llama-server` binary.
+- **Other templates, kept for custom presets.** Gemma 4's turn format (verified against `llama-server` `/apply-template`, 2026-11-05): `<|turn>system\n…<turn|>\n<|turn>user\n…<turn|>\n<|turn>model\n`, stop token `<turn|>`; its template adds a `<|think|>` line only when `enable_thinking` is true, so raw prompts leave it out. Mistral: `[INST] system\n\nuser[/INST]`, stop `</s>`. The PrismML build loads Gemma 4.
 
 ### 6.3 Presets
 
 | Preset | Notes |
 |---|---|
-| Gemma 4 26B-A4B *(default)* | MoE, partial expert offload |
-| Ternary Bonsai 27B | PrismML fork. ~9.7 GB VRAM. Smaller context. Thinking off |
-| Mistral Nemo 12B | Fully on GPU at Q5. The most predictable latency fallback |
-| Gemma 4 E4B | Fastest, weakest prose and memory quality |
-| Custom | Any GGUF or compatible endpoint |
+| Ternary Bonsai 9B *(default)* | PrismML fork. 2.4 GB file. Two slots of 16K. Thinking off by prefill |
+| Ternary Bonsai 27B (`PTQ1_0`) | 5.9 GB file. Slower, 16K context in total |
+| Ternary Bonsai 27B (`PQ2_0`) | 7.2 GB file |
+| Custom | Any GGUF (with its template: ChatML, Gemma or Mistral) or compatible endpoint |
 
-Each preset stores: template handling, stop sequences, thinking switch, sampling per role, and context size. Saved presets carry a revision; when the app improves a built-in's template, thinking switch or stop tokens, existing configs pick that up and keep the author's paths and arguments (`docs/data-format.md`).
+Each preset stores: template handling, stop sequences, thinking switch, sampling per role, and context size. Saved presets carry a revision; when the app improves a built-in's template, thinking switch or stop tokens, existing configs pick that up and keep the author's paths and arguments (`docs/data-format.md`). Revision 3 also retired the Gemma and Nemo presets.
 
 ### 6.4 AI Scheduler
 
@@ -347,6 +340,8 @@ The status bar shows **AI: Off · Starting · Ready · Thinking · Paused (typin
 | `Esc` | dismiss |
 | `Alt+]` / `Alt+[` | next / previous alternative (lazy, up to 3) |
 | keep typing | if the typed characters match the ghost's prefix, the ghost shrinks; otherwise it is discarded |
+
+Esc is handled by the editor itself while a suggestion shows, so it is fixed; the other keys are rebindable commands. A suggestion is also dropped when the cursor moves, the selection changes, or the editor loses focus. An alternative that repeats an earlier one is retried once. `Alt+]` with no suggestion showing asks for one.
 
 ### 7.3 Rendering
 - ProseMirror widget decoration. It is never in the document, undo stack, word count, or saved files.
@@ -750,9 +745,9 @@ Build order puts quality of life and the framework first. Each milestone ends wi
 - Managed and external connection, capability probe, health and status panel
 - AI Scheduler with slots and pre-emption, context log
 - Bake-off: tune Gemma 4 26B-A4B (`--n-cpu-moe`, KV quantisation, thinking off). Compare with Bonsai 27B, Nemo 12B, and E4B.
-- Speed test done on all six candidates (2026-11-05). ✅ once the author's blind vote confirms the default or picks a replacement with **Use this model**.
+- Speed test done on all six candidates (2026-11-05). ✅ The author chose Ternary Bonsai 9B as the default.
 
-**M3 — Ghost text**
+**M3 — Ghost text** ✅ (2026-11-05)
 - Triggers, streaming decoration, accept/dismiss/word-accept/cycle, post-processing
 - Provenance marks and visible stats
 - ✅ Acceptance checks 2–5 and 8.
@@ -800,7 +795,7 @@ Build order puts quality of life and the framework first. Each milestone ends wi
 
 | Risk / item | Mitigation |
 |---|---|
-| Gemma 4 26B-A4B with expert offload may have slow **cold** prompt processing (DDR4, possibly PCIe 3.0) | Prefix caching plus slot pinning, so ghost text pays only warm cost. Cold work runs in the background. Bake-off decides. Fallback: Mistral Nemo 12B fully on GPU |
+| Gemma 4 26B-A4B with expert offload may have slow **cold** prompt processing (DDR4, possibly PCIe 3.0) | **Resolved in M2:** it missed the speed limits and was not chosen. The default is Ternary Bonsai 9B, fully on the GPU |
 | 16K context per slot | Hierarchical summaries and retrieval. The model never needs the whole book |
 | Gemma 4 chat template and thinking switch | **Resolved in M2** (§6.2). Per-preset template config stays, and the probe warns on a mismatch |
 | Bonsai needs the PrismML fork | Managed mode with a custom binary path |

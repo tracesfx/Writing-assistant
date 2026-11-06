@@ -14,6 +14,7 @@ pub mod bakeoff;
 pub mod bakeoff_service;
 pub mod client;
 pub mod context_log;
+pub mod ghost;
 #[cfg(test)]
 pub mod mock;
 pub mod presets;
@@ -22,6 +23,7 @@ pub mod supervisor;
 pub mod template;
 pub mod types;
 
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::Duration;
@@ -35,11 +37,19 @@ use crate::story::{APP_DIR, StoryService};
 
 use client::{Health, InferenceClient, LlamaClient, validate_local_url};
 use context_log::ContextLog;
+use ghost::{GhostContext, GhostRequest, PostCtx};
 use scheduler::{Activity, FinishedJob, JobHandle, JobSpec, Scheduler, Target};
 use supervisor::{ProcState, Supervisor, launch_for};
 use types::*;
 
 const CONFIG_FILE: &str = "ai-config.json";
+
+/// Ghost requests in flight, and cancels that arrived before their request.
+#[derive(Default)]
+struct GhostBook {
+    active: HashMap<String, CancellationToken>,
+    early_cancelled: VecDeque<String>,
+}
 
 #[derive(Default)]
 struct Conn {
@@ -61,6 +71,8 @@ pub struct AiService {
     conn: Mutex<Conn>,
     last_request: Mutex<Option<LastRequest>>,
     last_status: Mutex<Option<(AiStatus, String)>>,
+    ghosts: Mutex<GhostBook>,
+    story: Arc<StoryService>,
     pub scheduler: Scheduler,
     pub supervisor: Arc<Supervisor>,
     pub context_log: Arc<ContextLog>,
@@ -84,7 +96,20 @@ impl AiService {
             .and_then(|b| serde_json::from_slice::<AiConfig>(&b).ok())
             .unwrap_or_else(presets::default_config);
         config.presets = presets::merge_presets(std::mem::take(&mut config.presets));
+        let saved_revision = config.preset_revision;
         presets::upgrade(&mut config);
+        if config.preset_revision != saved_revision {
+            // An older file was migrated: write it back once, so the file on disk
+            // matches what the app uses (a failure just means we migrate again next time).
+            match serde_json::to_vec_pretty(&config) {
+                Ok(json) => {
+                    if let Err(e) = atomic_write(&cfg_path, &json) {
+                        eprintln!("[margin] could not save the migrated model settings: {e}");
+                    }
+                }
+                Err(e) => eprintln!("[margin] could not encode the migrated model settings: {e}"),
+            }
+        }
         let context_log = Arc::new(ContextLog::new());
         context_log.set_limit(config.context_log_limit as usize);
 
@@ -117,6 +142,8 @@ impl AiService {
                 conn: Mutex::new(Conn::default()),
                 last_request: Mutex::new(None),
                 last_status: Mutex::new(None),
+                ghosts: Mutex::new(GhostBook::default()),
+                story: story.clone(),
                 scheduler,
                 supervisor,
                 context_log: context_log.clone(),
@@ -446,6 +473,185 @@ impl AiService {
         }
     }
 
+    // --- Ghost text (SPEC §7) ----------------------------------------------------
+
+    fn publish_ghost(&self, id: &str, state: GhostState, text: String, error: Option<String>) {
+        self.bus.publish(DomainEvent::AiGhost {
+            request_id: id.to_string(),
+            state,
+            text,
+            error,
+        });
+    }
+
+    /// Cancel one ghost request. If the request has not arrived yet (IPC calls
+    /// can overtake each other), remember the cancel so it never starts.
+    pub fn ghost_cancel(&self, request_id: &str) {
+        let mut g = lock(&self.ghosts);
+        match g.active.get(request_id) {
+            Some(t) => t.cancel(),
+            None => {
+                g.early_cancelled.push_back(request_id.to_string());
+                while g.early_cancelled.len() > 64 {
+                    g.early_cancelled.pop_front();
+                }
+            }
+        }
+    }
+
+    /// What the prompt builder needs, or `None` when AI is off for this document.
+    fn ghost_context(&self, doc_id: &str) -> Result<Option<GhostContext>> {
+        let meta = self.story.document_meta(doc_id)?;
+        if meta.ai == crate::project::document::AiToggle::Off {
+            return Ok(None);
+        }
+        let project = self.story.project_info()?;
+        Ok(Some(GhostContext {
+            project_title: project.title,
+            locale: project.locale,
+            doc_title: meta.title,
+            pov: meta.pov,
+            synopsis: meta.synopsis,
+        }))
+    }
+
+    /// Start a ghost-text request. Progress arrives as `ai.ghost` events keyed
+    /// by `req.request_id`; this call returns as soon as the job is queued.
+    /// Any keystroke cancels it (`note_keystroke`), and so does `ghost_cancel`.
+    pub async fn ghost_start(self: &Arc<Self>, req: GhostRequest) -> Result<()> {
+        let id = req.request_id.clone();
+        let token = CancellationToken::new();
+        {
+            let mut g = lock(&self.ghosts);
+            if let Some(i) = g.early_cancelled.iter().position(|x| *x == id) {
+                g.early_cancelled.remove(i);
+                drop(g);
+                self.publish_ghost(&id, GhostState::Cancelled, String::new(), None);
+                return Ok(());
+            }
+            g.active.insert(id.clone(), token.clone());
+        }
+        let me = self.clone();
+        let doc_id = req.doc_id.clone();
+        let ctx = tokio::task::spawn_blocking(move || me.ghost_context(&doc_id))
+            .await
+            .map_err(|e| MarginError::Internal(e.to_string()))
+            .and_then(|r| r);
+        let ctx = match ctx {
+            Ok(Some(c)) => c,
+            Ok(None) => {
+                lock(&self.ghosts).active.remove(&id);
+                self.publish_ghost(&id, GhostState::Empty, String::new(), None);
+                return Ok(());
+            }
+            Err(e) => {
+                lock(&self.ghosts).active.remove(&id);
+                return Err(e);
+            }
+        };
+        if token.is_cancelled() {
+            lock(&self.ghosts).active.remove(&id);
+            self.publish_ghost(&id, GhostState::Cancelled, String::new(), None);
+            return Ok(());
+        }
+
+        let n_ctx = lock(&self.conn).caps.n_ctx;
+        // /props reports the context of one slot. Unknown: stay on the safe side.
+        let budget = if n_ctx == 0 {
+            6000
+        } else {
+            n_ctx.saturating_sub(300).min(ghost::BUDGET_TOKENS)
+        };
+        let built = ghost::build_prompt(&ctx, &req.text_before, budget);
+        let sampling = ghost::sampling_for(
+            self.active_preset().sampling_for(Role::Ghost),
+            req.length,
+            req.variant,
+        );
+        let max_tokens = sampling.max_tokens;
+        let mut job = self.submit(JobSpec {
+            priority: Priority::P0,
+            role: Role::Ghost,
+            prompt: built.prompt,
+            sampling,
+            resumable: false,
+            log: true,
+        });
+        let me = self.clone();
+        self.handle.spawn(async move {
+            let post = |raw: &str, truncated: bool| {
+                ghost::post_process(
+                    raw,
+                    &PostCtx {
+                        before: &built.before,
+                        length: req.length,
+                        locale: ctx.locale,
+                        typography: req.typography,
+                        truncated,
+                    },
+                )
+            };
+            let mut raw = String::new();
+            let mut shown = String::new();
+            let mut cancel_sent = false;
+            loop {
+                // After a cancel, keep draining until the scheduler reports the end.
+                let ev = if cancel_sent {
+                    job.events.recv().await
+                } else {
+                    tokio::select! {
+                        _ = token.cancelled() => {
+                            job.cancel();
+                            cancel_sent = true;
+                            continue;
+                        }
+                        ev = job.events.recv() => ev,
+                    }
+                };
+                match ev {
+                    Some(scheduler::JobEvent::Delta(d)) => {
+                        raw.push_str(&d);
+                        // While streaming the last word may be cut off.
+                        if let Some(t) = post(&raw, true)
+                            && t != shown
+                        {
+                            shown = t.clone();
+                            me.publish_ghost(&id, GhostState::Streaming, t, None);
+                        }
+                    }
+                    Some(scheduler::JobEvent::Finished(c)) => {
+                        let (state, text, error) = match c.outcome {
+                            Outcome::Completed => {
+                                let truncated = c.timings.output_tokens >= max_tokens;
+                                match post(&c.text, truncated) {
+                                    Some(t) => (GhostState::Done, t, None),
+                                    None => (GhostState::Empty, String::new(), None),
+                                }
+                            }
+                            Outcome::Cancelled => (GhostState::Cancelled, String::new(), None),
+                            Outcome::Failed => (GhostState::Failed, String::new(), c.error),
+                        };
+                        lock(&me.ghosts).active.remove(&id);
+                        me.publish_ghost(&id, state, text, error);
+                        return;
+                    }
+                    Some(_) => {}
+                    None => {
+                        lock(&me.ghosts).active.remove(&id);
+                        me.publish_ghost(
+                            &id,
+                            GhostState::Failed,
+                            String::new(),
+                            Some("the scheduler stopped".into()),
+                        );
+                        return;
+                    }
+                }
+            }
+        });
+        Ok(())
+    }
+
     /// A one-off request for the Model panel's "Try it" box.
     pub async fn try_it(&self, text: String) -> Completion {
         let mut sampling = self.active_preset().sampling_for(Role::Test);
@@ -546,6 +752,43 @@ mod tests {
         );
         assert_eq!(parse_vram(""), None);
         assert_eq!(parse_vram("N/A, N/A"), None);
+    }
+
+    #[tokio::test]
+    async fn an_old_config_is_migrated_and_written_back_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut old = presets::default_config();
+        old.preset_revision = 2;
+        old.preset_id = "gemma4-26b-a4b".into();
+        for (id, template) in [
+            ("gemma4-26b-a4b", Template::Gemma),
+            ("nemo-12b", Template::Mistral),
+        ] {
+            let mut p = old.presets[0].clone();
+            p.id = id.into();
+            p.template = template;
+            old.presets.push(p);
+        }
+        let path = tmp.path().join(CONFIG_FILE);
+        std::fs::write(&path, serde_json::to_vec_pretty(&old).unwrap()).unwrap();
+
+        let svc = service(tmp.path());
+        let cfg = svc.config();
+        assert_eq!(cfg.preset_id, presets::DEFAULT_PRESET);
+        assert!(cfg.presets.iter().all(|p| p.id.starts_with("bonsai")));
+        assert_eq!(svc.active_preset().id, "bonsai-9b-pq2");
+
+        // The file on disk now matches.
+        let saved: AiConfig = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved.preset_revision, presets::PRESET_REVISION);
+        assert_eq!(saved.preset_id, presets::DEFAULT_PRESET);
+        assert!(saved.presets.iter().all(|p| p.id.starts_with("bonsai")));
+
+        // Loading a current file does not rewrite it.
+        let stamp = std::fs::metadata(&path).unwrap().modified().unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+        let _again = service(tmp.path());
+        assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), stamp);
     }
 
     #[tokio::test]
@@ -654,5 +897,220 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
         panic!("still {:?}", svc.status());
+    }
+
+    // --- Ghost text end to end (SPEC §7, §17 checks 3 and 8) ----------------------
+
+    use crate::project::manifest::{Locale, ProjectType, Section};
+    use crate::story::types::{DocMetaPatch, NewProject};
+    use std::sync::atomic::Ordering;
+
+    type Seen = Arc<Mutex<Vec<(String, GhostState, String)>>>;
+
+    struct GhostRig {
+        _dir: tempfile::TempDir,
+        svc: Arc<AiService>,
+        story: Arc<StoryService>,
+        doc_id: String,
+        mock: MockServer,
+        seen: Seen,
+    }
+
+    async fn ghost_rig() -> GhostRig {
+        let dir = tempfile::tempdir().unwrap();
+        let bus = Arc::new(EventBus::new());
+        let story = Arc::new(StoryService::new(bus.clone()));
+        let cfg_dir = dir.path().join("cfg");
+        std::fs::create_dir_all(&cfg_dir).unwrap();
+        let svc = AiService::new(
+            cfg_dir,
+            story.clone(),
+            bus.clone(),
+            tokio::runtime::Handle::current(),
+        );
+        story
+            .create_project(&NewProject {
+                parent_dir: dir.path().to_string_lossy().into(),
+                title: "The Salt Road".into(),
+                author: "J".into(),
+                project_type: ProjectType::Fiction,
+                locale: Locale::EnCa,
+            })
+            .unwrap();
+        let tree = story.binder_tree().unwrap();
+        let ms = tree
+            .sections
+            .iter()
+            .find(|s| s.section == Section::Manuscript)
+            .unwrap();
+        let doc_id = ms.nodes[0].children[0].id.clone();
+        let seen: Seen = Arc::default();
+        let s2 = seen.clone();
+        bus.subscribe(move |e| {
+            if let DomainEvent::AiGhost {
+                request_id,
+                state,
+                text,
+                ..
+            } = &e.event
+            {
+                s2.lock()
+                    .unwrap()
+                    .push((request_id.clone(), *state, text.clone()));
+            }
+        });
+        let mock = MockServer::start(MockConfig::default()).await;
+        let mut cfg = svc.config();
+        cfg.mode = ConnectionMode::External;
+        cfg.external_url = mock.url();
+        svc.set_config(cfg).unwrap();
+        svc.connect().await.unwrap();
+        for _ in 0..100 {
+            if svc.status().0 == AiStatus::Ready {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert_eq!(svc.status().0, AiStatus::Ready);
+        GhostRig {
+            _dir: dir,
+            svc,
+            story,
+            doc_id,
+            mock,
+            seen,
+        }
+    }
+
+    fn ghost_req(rig: &GhostRig, id: &str) -> GhostRequest {
+        GhostRequest {
+            request_id: id.into(),
+            doc_id: rig.doc_id.clone(),
+            text_before: "The ferry had gone.\n\nShe stood at the".into(),
+            length: ghost::GhostLength::Phrase,
+            variant: 0,
+            typography: ghost::Typography {
+                quotes: true,
+                dashes: true,
+                ellipsis: true,
+            },
+        }
+    }
+
+    async fn wait_state(rig: &GhostRig, id: &str, want: GhostState) -> Vec<(GhostState, String)> {
+        for _ in 0..150 {
+            let mine: Vec<_> = rig
+                .seen
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(i, _, _)| i == id)
+                .map(|(_, s, t)| (*s, t.clone()))
+                .collect();
+            if mine.iter().any(|(s, _)| *s == want) {
+                return mine;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!(
+            "{id} never reached {want:?}: {:?}",
+            rig.seen.lock().unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_ghost_request_streams_then_finishes_with_the_cleaned_suggestion() {
+        let rig = ghost_rig().await;
+        rig.svc.ghost_start(ghost_req(&rig, "g1")).await.unwrap();
+        let events = wait_state(&rig, "g1", GhostState::Done).await;
+        let (state, text) = events.last().unwrap();
+        assert_eq!(*state, GhostState::Done);
+        // Phrase length: ten words, with the model's own space after "the".
+        assert_eq!(text, " The quick brown fox jumps over the lazy dog and");
+        // It streamed: growing text arrived before the end.
+        let streamed: Vec<_> = events
+            .iter()
+            .filter(|(s, _)| *s == GhostState::Streaming)
+            .collect();
+        assert!(streamed.len() >= 3, "{events:?}");
+        assert!(streamed.windows(2).all(|w| w[1].1.len() >= w[0].1.len()));
+        // The prompt went to slot 0 with the prefilled assistant turn and the
+        // scene notes, and was recorded in the context log.
+        let body = &rig.mock.state.bodies_for("/completion")[0];
+        assert_eq!(body["id_slot"], 0);
+        let prompt = body["prompt"].as_str().unwrap();
+        assert!(prompt.contains("Canadian English"));
+        assert!(prompt.contains("The ferry had gone."));
+        assert!(prompt.ends_with("She stood at the"));
+        assert_eq!(rig.svc.context_log.list(10).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_keystroke_cancels_a_streaming_ghost_and_nothing_more_arrives() {
+        let rig = ghost_rig().await;
+        rig.svc.ghost_start(ghost_req(&rig, "g2")).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(90)).await;
+        rig.svc.note_keystroke();
+        let events = wait_state(&rig, "g2", GhostState::Cancelled).await;
+        assert!(!events.iter().any(|(s, _)| *s == GhostState::Done));
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let after = rig
+            .seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(i, _, _)| i == "g2")
+            .count();
+        assert_eq!(after, events.len(), "no events after the cancel");
+        // The server saw the client go away (SPEC §17 check 3).
+        assert!(rig.mock.state.disconnected.load(Ordering::SeqCst) >= 1);
+    }
+
+    #[tokio::test]
+    async fn a_cancel_that_overtakes_its_request_stops_it_before_it_starts() {
+        let rig = ghost_rig().await;
+        rig.svc.ghost_cancel("g3");
+        rig.svc.ghost_start(ghost_req(&rig, "g3")).await.unwrap();
+        wait_state(&rig, "g3", GhostState::Cancelled).await;
+        assert!(rig.mock.state.bodies_for("/completion").is_empty());
+        // The remembered cancel is used up: the same id may run again.
+        rig.svc.ghost_start(ghost_req(&rig, "g3")).await.unwrap();
+        wait_state(&rig, "g3", GhostState::Done).await;
+    }
+
+    #[tokio::test]
+    async fn a_newer_ghost_request_replaces_the_older_one() {
+        let rig = ghost_rig().await;
+        rig.svc.ghost_start(ghost_req(&rig, "old")).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        rig.svc.ghost_start(ghost_req(&rig, "new")).await.unwrap();
+        wait_state(&rig, "old", GhostState::Cancelled).await;
+        wait_state(&rig, "new", GhostState::Done).await;
+    }
+
+    #[tokio::test]
+    async fn a_document_with_ai_off_gets_no_suggestion_and_no_request() {
+        let rig = ghost_rig().await;
+        rig.story
+            .document_update_meta(
+                &rig.doc_id,
+                &DocMetaPatch {
+                    ai: Some(crate::project::document::AiToggle::Off),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        rig.svc.ghost_start(ghost_req(&rig, "g5")).await.unwrap();
+        wait_state(&rig, "g5", GhostState::Empty).await;
+        assert!(rig.mock.state.bodies_for("/completion").is_empty());
+    }
+
+    #[tokio::test]
+    async fn with_the_server_stopped_a_ghost_request_fails_quietly() {
+        let rig = ghost_rig().await;
+        rig.svc.disconnect().await;
+        rig.svc.ghost_start(ghost_req(&rig, "g6")).await.unwrap();
+        let events = wait_state(&rig, "g6", GhostState::Failed).await;
+        assert_eq!(events.last().unwrap().1, "");
     }
 }

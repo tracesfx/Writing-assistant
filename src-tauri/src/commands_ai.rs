@@ -10,6 +10,7 @@ use crate::ai::AiService;
 use crate::ai::bakeoff::{BakeoffRun, BlindQuestion, Candidate, QualityScore};
 use crate::ai::bakeoff_service::{BakeoffService, BakeoffState, RunSummary};
 use crate::ai::context_log::{ContextLogEntry, ContextLogSummary};
+use crate::ai::ghost::GhostRequest;
 use crate::ai::types::*;
 use crate::error::Result;
 
@@ -158,4 +159,20 @@ pub async fn bakeoff_use_model(
     preset_id: String,
 ) -> Result<AiConfig> {
     b.use_model(&run_id, &preset_id)
+}
+
+// --- Ghost text ---------------------------------------------------------------------
+
+/// Start a ghost-text request. Progress arrives as `ai.ghost` events.
+#[tauri::command]
+#[specta::specta]
+pub async fn ai_ghost_start(ai: State<'_, Ai>, request: GhostRequest) -> Result<()> {
+    ai.inner().ghost_start(request).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn ai_ghost_cancel(ai: State<'_, Ai>, request_id: String) -> Result<()> {
+    ai.ghost_cancel(&request_id);
+    Ok(())
 }

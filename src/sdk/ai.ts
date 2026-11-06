@@ -3,8 +3,36 @@
  * bake-off. Wraps the generated IPC bindings like `story` does. None of
  * these calls touch manuscript text.
  */
-import { commands, type AiConfig } from "./bindings";
+import { commands, type AiConfig, type AiStatus, type GhostRequest, type GhostState } from "./bindings";
+import { events } from "./events";
 import { unwrap } from "./story";
+
+/** The ghost-text surface the editor needs (SPEC §7). Tests pass a fake. */
+export interface GhostClient {
+  start(req: GhostRequest): Promise<unknown>;
+  cancel(requestId: string): Promise<unknown>;
+  /** The author typed: cancels in-flight ghost text, pauses idle work. */
+  keystroke(): Promise<unknown>;
+  subscribe(handler: (e: { requestId: string; state: GhostState; text: string }) => void): () => void;
+}
+
+let status: AiStatus = "notRunning";
+let tracking = false;
+
+/** Follow `ai.status` events from the first call on, seeded from the panel. */
+function track(): void {
+  if (tracking) return;
+  tracking = true;
+  events.on("ai.status", (e) => {
+    status = e.status;
+  });
+  void commands
+    .aiPanel()
+    .then((r) => {
+      if (r.status === "ok") status = r.data.status;
+    })
+    .catch(() => undefined);
+}
 
 export const ai = {
   config: {
@@ -17,6 +45,23 @@ export const ai = {
   disconnect: () => unwrap(commands.aiDisconnect()),
   /** Tell the scheduler the author typed: cancels ghost text, pauses idle work. */
   keystroke: () => unwrap(commands.aiKeystroke()),
+  /** Last known model server status (follows events from the first call). */
+  status: (): AiStatus => {
+    track();
+    return status;
+  },
+  /** The model can take a ghost-text request right now. */
+  isReady: (): boolean => {
+    track();
+    return status === "ready" || status === "thinking" || status === "pausedTyping";
+  },
+  ghost: {
+    start: (req: GhostRequest) => unwrap(commands.aiGhostStart(req)),
+    cancel: (requestId: string) => unwrap(commands.aiGhostCancel(requestId)),
+    keystroke: () => unwrap(commands.aiKeystroke()),
+    subscribe: (handler) =>
+      events.on("ai.ghost", (e) => handler({ requestId: e.requestId, state: e.state, text: e.text })),
+  } satisfies GhostClient,
   /** One-off request for the Model panel. */
   try: (text: string) => unwrap(commands.aiTry(text)),
   contextLog: {

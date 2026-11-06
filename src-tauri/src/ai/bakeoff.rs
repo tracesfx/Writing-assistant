@@ -991,7 +991,12 @@ mod tests {
 
     #[test]
     fn n_cpu_moe_is_read_and_replaced_in_args() {
-        let p = &builtin_presets()[0];
+        // A MoE preset the author added: the built-ins are all dense Bonsai models.
+        let mut moe = builtin_presets()[0].clone();
+        moe.args = ["-ngl", "99", "--n-cpu-moe", "17", "-fa", "on"]
+            .map(String::from)
+            .to_vec();
+        let p = &moe;
         assert_eq!(n_cpu_moe_of(&p.args), Some(17));
         assert_eq!(n_cpu_moe_of(&with_n_cpu_moe(p, 20).args), Some(20));
         // Tuned runs pin the placement: --fit off, added once.

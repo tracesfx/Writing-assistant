@@ -22,6 +22,8 @@ use crate::project::atomic::atomic_write;
 use crate::project::manifest::{Goals, Section};
 use crate::story::StoryService;
 
+pub mod provenance;
+
 pub const STATS_FILE: &str = "stats/sessions.json";
 const SCHEMA_VERSION: u32 = 1;
 const MAX_SESSIONS: usize = 1000;
