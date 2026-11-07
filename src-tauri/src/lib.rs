@@ -6,10 +6,12 @@ pub mod backup;
 pub mod commands;
 pub mod commands_ai;
 pub mod commands_ext;
+pub mod commands_memory;
 pub mod dialect;
 pub mod error;
 pub mod events;
 pub mod history;
+pub mod memory;
 pub mod project;
 pub mod spell;
 pub mod stats;
@@ -28,6 +30,7 @@ use crate::app_state::AppState;
 use crate::backup::Backups;
 use crate::events::{EventBus, MarginEvent};
 use crate::history::History;
+use crate::memory::MemoryService;
 use crate::spell::Spell;
 use crate::stats::Stats;
 use crate::story::StoryService;
@@ -38,6 +41,7 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
     use commands as c;
     use commands_ai as a;
     use commands_ext as x;
+    use commands_memory as m;
     Builder::<tauri::Wry>::new()
         .commands(collect_commands![
             c::project_create,
@@ -117,6 +121,52 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             a::bakeoff_answer,
             a::bakeoff_scores,
             a::bakeoff_use_model,
+            m::memory_status,
+            m::memory_config_get,
+            m::memory_config_set,
+            m::memory_focus,
+            m::memory_reindex_scene,
+            m::memory_rebuild_all,
+            m::memory_forget_document,
+            m::memory_excluded,
+            m::embedding_start,
+            m::embedding_stop,
+            m::entities_list,
+            m::entity_get,
+            m::entity_create,
+            m::entity_update,
+            m::entity_delete,
+            m::entity_restore,
+            m::fact_add,
+            m::fact_update,
+            m::fact_delete,
+            m::relation_add,
+            m::relation_delete,
+            m::memory_make_canon,
+            m::memory_delete_inferred,
+            m::relations_list,
+            m::relations_graph,
+            m::mentions_by_entity,
+            m::mentions_matrix,
+            m::timeline_events,
+            m::threads_list,
+            m::scene_cards,
+            m::metrics_series,
+            m::bible_types,
+            m::inspector_rows,
+            m::search_text,
+            m::search_semantic,
+            m::resolve_source,
+            m::ideas_generate,
+            m::idea_expand,
+            m::ideas_pinned,
+            m::idea_pin,
+            m::idea_unpin,
+            m::idea_to_note,
+            m::ask_book,
+            m::phrasing_generate,
+            m::memory_export,
+            m::memory_import,
         ])
         .events(collect_events![MarginEvent])
         // Every type has the same shape in both directions.
@@ -173,7 +223,16 @@ pub fn run() {
                 bus.clone(),
                 tauri::async_runtime::handle().inner().clone(),
             );
+            let config_dir_mem = config_dir.clone();
             let bakeoff = BakeoffService::new(ai.clone(), story.clone(), bus.clone(), config_dir);
+            let memory = MemoryService::new(
+                config_dir_mem,
+                story.clone(),
+                ai.clone(),
+                bus.clone(),
+                tauri::async_runtime::handle().inner().clone(),
+            );
+            app.manage(memory);
             app.manage(ai.clone());
             app.manage(bakeoff);
             // Forward every domain event to the frontend.

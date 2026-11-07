@@ -101,3 +101,34 @@ describe("workbench", () => {
     expect(after.tabs.find((t) => t.id === after.activeTabId)?.resourceId).toBe("a");
   });
 });
+
+describe("margin tabs (SPEC §5.3)", () => {
+  const Tab = () => null;
+  const ideas = defineModule({
+    id: "ideas",
+    name: "Ideas",
+    sdkVersion: "0.5.0",
+    contributes: { marginTabs: [{ id: "t.b", title: "B", order: 2, component: Tab }] },
+  });
+  const ask = defineModule({
+    id: "ask",
+    name: "Ask",
+    sdkVersion: "0.5.0",
+    contributes: { marginTabs: [{ id: "t.a", title: "A", order: 1, component: Tab }] },
+  });
+
+  it("collects the tabs of every enabled module and drops a disabled module's tabs", () => {
+    const all = buildRegistry([ideas, ask], () => true);
+    expect(all.marginTabs.map((t) => t.id).sort()).toEqual(["t.a", "t.b"]);
+    expect(all.marginTabs.find((t) => t.id === "t.a")?.moduleId).toBe("ask");
+    const some = buildRegistry([ideas, ask], (m) => m.id !== "ask");
+    expect(some.marginTabs.map((t) => t.id)).toEqual(["t.b"]);
+  });
+
+  it("keeps them sorted by order for the Margin panel", async () => {
+    const { setMarginTabs } = await import("@margin/sdk");
+    const { useMarginTabsStore } = await import("../sdk/marginTabs");
+    setMarginTabs(buildRegistry([ideas, ask], () => true).marginTabs);
+    expect(useMarginTabsStore.getState().tabs.map((t) => t.id)).toEqual(["t.a", "t.b"]);
+  });
+});

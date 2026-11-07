@@ -29,6 +29,7 @@ import {
   aiRanges,
   aiWordCount,
   fromOffsets,
+  offsetAt,
   plainText,
   setAiRanges,
   sha256Hex,
@@ -289,6 +290,18 @@ function EditorSurface({ tabId, initial, active, focused }: SurfaceProps) {
       selectedText: () => {
         const { from, to } = editor.state.selection;
         return editor.state.doc.textBetween(from, to, "\n\n", "");
+      },
+      textBeforeCursor: () => {
+        const full = plainText(editor.state.doc).slice(0, offsetAt(editor.state.doc, editor.state.selection.head));
+        return full.length > 12000 ? full.slice(-12000) : full;
+      },
+      selectionContext: () => {
+        const { from, to } = editor.state.selection;
+        const doc = editor.state.doc;
+        const full = plainText(doc);
+        const a = offsetAt(doc, from);
+        const b = offsetAt(doc, to);
+        return { text: full.slice(a, b), before: full.slice(Math.max(0, a - 1500), a), after: full.slice(b, b + 400) };
       },
       insertText: (text) => {
         editor.chain().focus().insertContent(text.split(/\n{2,}/).map((p) => ({ type: "paragraph", content: p ? [{ type: "text", text: p }] : [] }))).run();

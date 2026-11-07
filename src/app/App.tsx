@@ -11,6 +11,7 @@ import {
   type AppSettings,
   type BinderTree,
   type ProjectInfo,
+  setMarginTabs,
 } from "@margin/sdk";
 
 import { wireProjectEvents } from "../sdk/project";
@@ -73,6 +74,7 @@ export function App() {
   // Tell the workbench which view opens documents and where panels live.
   useEffect(() => {
     useShellUi.setState({ registry });
+    setMarginTabs(registry.marginTabs);
     useWorkbench.setState({
       viewFor: (k) => registry.viewFor(k),
       panelSide: (id) => registry.panels.find((p) => p.id === id)?.side,

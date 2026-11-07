@@ -2098,3 +2098,102 @@ code.path {
 }
 /* TipTap sets white-space: normal on every contenteditable="false" element, with the
    same specificity as the rules above: the ghost text needs the more specific selector. */
+
+/* --- Story Memory (M4): bible, inspector, margin panel -------------------------- */
+.grow { flex: 1; }
+.mem-inferred-text { text-decoration: underline dotted; text-decoration-thickness: 1px; text-underline-offset: 3px; text-decoration-color: var(--muted); }
+.mem-status { font-size: 0.72em; letter-spacing: 0.02em; text-transform: uppercase; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+.mem-status.mem-canon { color: var(--accent); border-color: var(--accent); }
+.mem-conflict { font-size: 0.78em; color: var(--danger); margin-left: 6px; }
+.status-memory { color: var(--muted); }
+.status-memory.mem-state-working::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--accent); vertical-align: middle; }
+button.link.mem-source { font-style: italic; text-align: left; max-width: 100%; overflow-wrap: anywhere; }
+
+.bible-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.bible-new { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 10px 8px; }
+.bible-new input { flex: 1; min-width: 6em; }
+.bible-search { margin: 0 10px 8px; width: calc(100% - 20px); }
+.bible-list { flex: 1; overflow: auto; padding: 0 6px 16px; }
+.bible-list ul { list-style: none; margin: 0; padding: 0; }
+.bible-group { margin: 12px 6px 4px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+.bible-item { display: flex; justify-content: space-between; gap: 8px; width: 100%; text-align: left; background: none; border: 0; border-radius: 5px; padding: 3px 8px; }
+.bible-item:hover { background: var(--select); }
+.bible-item.active { background: var(--accent-soft); }
+.bible-count { font-size: 0.8em; }
+.bible-empty { padding: 4px 10px; font-size: 0.9em; }
+
+.bible-entry { height: 100%; overflow: auto; padding: 18px 28px 64px; max-width: 880px; }
+.bible-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.bible-name { font-size: 1.5em; font-weight: 600; border: 1px solid transparent; background: none; padding: 2px 6px; min-width: 6em; flex: 1; }
+.bible-name:hover, .bible-name:focus { border-color: var(--border); background: var(--bg-elev); }
+.bible-body { display: flex; flex-direction: column; gap: 6px; }
+.bible-body section { margin-top: 12px; }
+.bible-body h3 { font-size: 0.82em; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 6px; }
+.bible-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.bible-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 4px 1px 10px; border-radius: 999px; background: var(--bg-sunk); }
+.bible-chip button { background: none; border: 0; color: var(--muted); padding: 0 4px; }
+.bible-add { width: 10em; }
+.bible-fields { margin: 0 0 8px; display: grid; gap: 4px; }
+.bible-fields > div { display: grid; grid-template-columns: 9em 1fr; gap: 8px; align-items: center; }
+.bible-fields dt { color: var(--muted); }
+.bible-fields dd { margin: 0; display: flex; gap: 4px; }
+.bible-fields dd input { flex: 1; }
+.bible-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.bible-row input { flex: 1; min-width: 8em; }
+.bible-notes { width: 100%; resize: vertical; font: inherit; }
+.bible-facts { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.bible-facts li { padding: 6px 8px; border-radius: 6px; border: 1px solid transparent; }
+.bible-facts li:hover { border-color: var(--border); background: var(--bg-elev); }
+.bible-fact-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.bible-fact-main input { flex: 1; }
+.bible-fact-text { background: none; border: 0; padding: 0; text-align: left; font: inherit; }
+.bible-fact-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 2px; font-size: 0.88em; color: var(--muted); }
+.bible-field-tag { font-size: 0.8em; }
+.bible-mentions { list-style: none; padding: 0; margin: 0; }
+
+.inspector { height: 100%; overflow: auto; padding: 16px 24px 48px; display: flex; flex-direction: column; gap: 10px; }
+.inspector-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.inspector-head h2 { margin: 0; font-size: 1.2em; }
+.inspector-export { position: relative; }
+.inspector-export .menu { position: absolute; right: 0; top: 100%; z-index: 20; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); min-width: 260px; }
+.inspector-filters, .inspector-bulk { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.inspector-filters input[type="search"] { flex: 1; min-width: 12em; }
+.inspector-table { overflow: auto; }
+.inspector-table td .link { text-align: left; }
+.inspector-foot { margin-top: 8px; }
+.ai-table tr.inferred td:first-child { box-shadow: inset 2px 0 0 var(--border); }
+
+.context-view .ai-log { max-height: 340px; }
+.context-section { margin-bottom: 8px; }
+.context-section summary { cursor: pointer; padding: 4px 0; }
+
+.margin-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.margin-tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--border); }
+.margin-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 5px 8px; color: var(--muted); position: relative; }
+.margin-tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+.margin-dot { position: absolute; top: 4px; right: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.margin-tab { flex: 1; overflow: auto; padding: 10px 12px 40px; display: flex; flex-direction: column; gap: 8px; }
+.margin-tab[hidden] { display: none; }
+.margin-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.margin-auto { font-size: 0.85em; color: var(--muted); }
+.idea-card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
+.idea-card p { margin: 4px 0; }
+.idea-kind { font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); }
+.idea-expanded { color: var(--muted); border-left: 2px solid var(--border); padding-left: 8px; }
+.idea-refs { font-size: 0.85em; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.idea-refs .link { text-align: left; font-style: italic; }
+.idea-actions { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.88em; }
+.margin-pinned h4 { margin: 12px 0 6px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.ask-form { display: flex; flex-direction: column; gap: 6px; }
+.ask-form textarea { font: inherit; resize: vertical; }
+.ask-item { border-top: 1px solid var(--border); padding-top: 8px; }
+.ask-q { font-weight: 600; margin: 0 0 4px; }
+.ask-answer p { margin: 4px 0; }
+.ask-none p:first-child { color: var(--muted); font-style: italic; }
+.cite-n { display: inline-block; min-width: 1.4em; padding: 0 4px; margin: 0 1px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 0.82em; line-height: 1.5; }
+.ask-cites { margin: 6px 0; padding-left: 20px; font-size: 0.9em; display: flex; flex-direction: column; gap: 6px; }
+.ask-cites q { display: block; color: var(--muted); font-style: italic; }
+.cite-kind { font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.phrasing-original { margin: 4px 0; padding: 6px 10px; border-left: 3px solid var(--border); color: var(--muted); font-style: italic; }
+.memory-page .setting-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+.memory-page .setting-row.stack { flex-direction: column; align-items: stretch; gap: 4px; }

@@ -107,6 +107,52 @@ export const commands = {
 	bakeoffAnswer: (runId: string, index: number, label: string | null) => typedError<null, MarginError>(__TAURI_INVOKE("bakeoff_answer", { runId, index, label })),
 	bakeoffScores: (runId: string) => typedError<QualityScore[], MarginError>(__TAURI_INVOKE("bakeoff_scores", { runId })),
 	bakeoffUseModel: (runId: string, presetId: string) => typedError<AiConfig, MarginError>(__TAURI_INVOKE("bakeoff_use_model", { runId, presetId })),
+	memoryStatus: () => typedError<MemoryStatus, MarginError>(__TAURI_INVOKE("memory_status")),
+	memoryConfigGet: () => typedError<MemoryConfig, MarginError>(__TAURI_INVOKE("memory_config_get")),
+	memoryConfigSet: (config: MemoryConfig) => typedError<MemoryConfig, MarginError>(__TAURI_INVOKE("memory_config_set", { config })),
+	memoryFocus: (docId: string | null) => typedError<null, MarginError>(__TAURI_INVOKE("memory_focus", { docId })),
+	memoryReindexScene: (docId: string) => typedError<null, MarginError>(__TAURI_INVOKE("memory_reindex_scene", { docId })),
+	memoryRebuildAll: () => typedError<number, MarginError>(__TAURI_INVOKE("memory_rebuild_all")),
+	memoryForgetDocument: (docId: string, forget: boolean) => typedError<null, MarginError>(__TAURI_INVOKE("memory_forget_document", { docId, forget })),
+	memoryExcluded: () => typedError<string[], MarginError>(__TAURI_INVOKE("memory_excluded")),
+	embeddingStart: () => typedError<null, MarginError>(__TAURI_INVOKE("embedding_start")),
+	embeddingStop: () => typedError<null, MarginError>(__TAURI_INVOKE("embedding_stop")),
+	entitiesList: (kind: string | null, query: string | null) => typedError<EntitySummary[], MarginError>(__TAURI_INVOKE("entities_list", { kind, query })),
+	entityGet: (id: string) => typedError<EntityDetail, MarginError>(__TAURI_INVOKE("entity_get", { id })),
+	entityCreate: (kind: string, name: string, notes: string) => typedError<Entity, MarginError>(__TAURI_INVOKE("entity_create", { kind, name, notes })),
+	entityUpdate: (id: string, patch: EntityPatch) => typedError<Entity, MarginError>(__TAURI_INVOKE("entity_update", { id, patch })),
+	entityDelete: (id: string) => typedError<Entity, MarginError>(__TAURI_INVOKE("entity_delete", { id })),
+	entityRestore: (entity: Entity) => typedError<Entity, MarginError>(__TAURI_INVOKE("entity_restore", { entity })),
+	factAdd: (entity: string, text: string, field: string | null, source: Source | null) => typedError<Fact, MarginError>(__TAURI_INVOKE("fact_add", { entity, text, field, source })),
+	factUpdate: (entity: string, fact: string, text: string, field: string | null) => typedError<Fact, MarginError>(__TAURI_INVOKE("fact_update", { entity, fact, text, field })),
+	factDelete: (entity: string, fact: string) => typedError<null, MarginError>(__TAURI_INVOKE("fact_delete", { entity, fact })),
+	relationAdd: (from: string, to: string, kind: string, since: string | null) => typedError<Relation, MarginError>(__TAURI_INVOKE("relation_add", { from, to, kind, since })),
+	relationDelete: (entity: string, relation: string) => typedError<null, MarginError>(__TAURI_INVOKE("relation_delete", { entity, relation })),
+	memoryMakeCanon: (items: ItemRef[]) => typedError<number, MarginError>(__TAURI_INVOKE("memory_make_canon", { items })),
+	memoryDeleteInferred: (items: ItemRef[]) => typedError<number, MarginError>(__TAURI_INVOKE("memory_delete_inferred", { items })),
+	relationsList: (entity: string | null, kind: string | null) => typedError<RelationView[], MarginError>(__TAURI_INVOKE("relations_list", { entity, kind })),
+	relationsGraph: () => typedError<RelationGraph, MarginError>(__TAURI_INVOKE("relations_graph")),
+	mentionsByEntity: (id: string) => typedError<MentionRow[], MarginError>(__TAURI_INVOKE("mentions_by_entity", { id })),
+	mentionsMatrix: (types: string[]) => typedError<MentionMatrix, MarginError>(__TAURI_INVOKE("mentions_matrix", { types })),
+	timelineEvents: () => typedError<EventView[], MarginError>(__TAURI_INVOKE("timeline_events")),
+	threadsList: (status: ThreadStatus | null) => typedError<ThreadView[], MarginError>(__TAURI_INVOKE("threads_list", { status })),
+	sceneCards: () => typedError<SceneCardView[], MarginError>(__TAURI_INVOKE("scene_cards")),
+	metricsSeries: (key: string) => typedError<MetricPoint[], MarginError>(__TAURI_INVOKE("metrics_series", { key })),
+	bibleTypes: () => typedError<TypeInfo[], MarginError>(__TAURI_INVOKE("bible_types")),
+	inspectorRows: () => typedError<InspectorRow[], MarginError>(__TAURI_INVOKE("inspector_rows")),
+	searchText: (query: string, k: number) => typedError<PassageHit[], MarginError>(__TAURI_INVOKE("search_text", { query, k })),
+	searchSemantic: (query: string, k: number) => typedError<PassageHit[], MarginError>(__TAURI_INVOKE("search_semantic", { query, k })),
+	resolveSource: (source: Source) => typedError<PassageHit | null, MarginError>(__TAURI_INVOKE("resolve_source", { source })),
+	ideasGenerate: (request: IdeasRequest) => typedError<IdeasResult, MarginError>(__TAURI_INVOKE("ideas_generate", { request })),
+	ideaExpand: (docId: string, idea: string, textBefore: string) => typedError<ExpandedIdea, MarginError>(__TAURI_INVOKE("idea_expand", { docId, idea, textBefore })),
+	ideasPinned: () => typedError<PinnedIdea[], MarginError>(__TAURI_INVOKE("ideas_pinned")),
+	ideaPin: (idea: Idea, docId: string) => typedError<PinnedIdea[], MarginError>(__TAURI_INVOKE("idea_pin", { idea, docId })),
+	ideaUnpin: (id: string) => typedError<PinnedIdea[], MarginError>(__TAURI_INVOKE("idea_unpin", { id })),
+	ideaToNote: (docId: string, text: string) => typedError<string, MarginError>(__TAURI_INVOKE("idea_to_note", { docId, text })),
+	askBook: (question: string) => typedError<AskAnswer, MarginError>(__TAURI_INVOKE("ask_book", { question })),
+	phrasingGenerate: (request: PhrasingRequest) => typedError<PhrasingResult, MarginError>(__TAURI_INVOKE("phrasing_generate", { request })),
+	memoryExport: (dir: string, format: ExportFormat) => typedError<string[], MarginError>(__TAURI_INVOKE("memory_export", { dir, format })),
+	memoryImport: (path: string) => typedError<number, MarginError>(__TAURI_INVOKE("memory_import", { path })),
 };
 
 /** Events */
@@ -144,6 +190,11 @@ export type AiStatus = "off" | "starting" | "ready" | "thinking" |
 
 export type AiToggle = "on" | "off";
 
+export type Alias = {
+	text: string,
+	status: Status,
+};
+
 export type AppSession = {
 	schemaVersion?: number,
 	recentProjects?: RecentProject[],
@@ -158,7 +209,18 @@ export type AppSession = {
 	projects?: { [key in string]: ProjectPrefs },
 };
 
+export type AskAnswer = {
+	answer: string,
+	/**  False when the book holds nothing that answers the question. */
+	found: boolean,
+	citations: Citation[],
+	contextId: string | null,
+	note: string | null,
+};
+
 export type AttrValue = boolean | number | null | string | null;
+
+export type Author = "author" | "ai";
 
 /**
  *  Backup settings (SPEC §11.3). Stored per machine, since the folder is a
@@ -283,6 +345,17 @@ export type Capabilities = {
 	hasChatTemplate: boolean,
 	/**  The server's own rendering of a sample chat differs from ours. */
 	templateWarning: string | null,
+};
+
+export type Citation = {
+	/**  The number the answer uses: [1], [2], … */
+	label: number,
+	/**  `passage`, `fact`, `relation`, `scene`. */
+	kind: string,
+	title: string,
+	text: string,
+	source: PassageRef | null,
+	entityId: string | null,
 };
 
 /**
@@ -447,7 +520,106 @@ export type DomainEvent = { type: "project.opened"; projectId: string; title: st
 /**  The AI-accepted ranges of a document were saved (SPEC §7.6). */
 { type: "ai.provenanceChanged"; docId: string; aiWords: number } | 
 /**  A bake-off step started or the run ended (SPEC §6.6). */
-{ type: "ai.bakeoffProgress"; presetId: string; stage: string; finished: boolean } | { type: "backup.finished"; path: string | null; error: string | null };
+{ type: "ai.bakeoffProgress"; presetId: string; stage: string; finished: boolean } | 
+/**
+ *  Story Memory changed (SPEC §5.2): entries, facts, scene cards, … `kinds`
+ *  says which of `entities`, `facts`, `relations`, `events`, `scenes`, `summaries`.
+ */
+{ type: "memory.updated"; entityIds: string[]; sceneIds: string[]; kinds: string[] } | 
+/**  The indexer's state changed (SPEC §9.4 step 5). */
+{ type: "index.progress"; state: IndexState; pending: number; total: number; current: string | null } | { type: "backup.finished"; path: string | null; error: string | null };
+
+export type EmbeddingStatus = {
+	enabled: boolean,
+	ready: boolean,
+	model: string,
+	vectors: number,
+	detail: string,
+};
+
+/**
+ *  A bible entry: character, location, item, … (SPEC §9.2). Stored as
+ *  `bible/<type>/<slug>--<id>.md`: YAML frontmatter plus the author's notes.
+ */
+export type Entity = {
+	schemaVersion: number,
+	id: string,
+	type: string,
+	name: string,
+	aliases?: Alias[],
+	/**  The author's own fields (age, occupation, …). The AI never writes these. */
+	fields?: { [key in string]: string },
+	facts?: Fact[],
+	relations?: Relation[],
+	tags?: string[],
+	status: Status,
+	createdBy: Author,
+	created: string,
+	updated: string,
+	thread?: ThreadData | null,
+	/**  The author's notes: the body of the Markdown file, not part of the frontmatter. */
+	notes?: string,
+};
+
+export type EntityDetail = {
+	entity: Entity,
+	/**  Relations that point at this entry, from other entries. */
+	relationsIn: RelationView[],
+	relationsOut: RelationView[],
+	mentions: MentionRow[],
+};
+
+/**  Fields of an entry the author may change; `None` leaves one alone. */
+export type EntityPatch = {
+	name: string | null,
+	type: string | null,
+	aliases: string[] | null,
+	fields: { [key in string]: string } | null,
+	tags: string[] | null,
+	notes: string | null,
+	threadStatus: ThreadStatus | null,
+};
+
+export type EntitySummary = {
+	id: string,
+	type: string,
+	name: string,
+	status: Status,
+	createdBy: Author,
+	aliases: string[],
+	factCount: number,
+	inferredFactCount: number,
+	relationCount: number,
+	mentionCount: number,
+	updated: string,
+};
+
+export type EventView = {
+	event: TimelineEvent,
+	entityNames: string[],
+	sceneTitle: string | null,
+};
+
+export type ExpandedIdea = {
+	text: string,
+	contextId: string,
+};
+
+export type ExportFormat = "json" | "csv" | "markdown" | "graphml";
+
+export type Fact = {
+	id: string,
+	text: string,
+	/**  A named attribute ("eye colour"); facts that share one are alternatives. */
+	field?: string | null,
+	status: Status,
+	source?: Source | null,
+	history?: HistoryEntry[],
+	/**  Conflict flagging (opt-in): the canon fact this inferred fact disagrees with. */
+	conflictsWith?: string | null,
+	createdBy: Author,
+	updated: string,
+};
 
 /**  How much to suggest (SPEC §7.1). Phrase is the default. */
 export type GhostLength = "word" | "phrase" | "sentence";
@@ -482,12 +654,100 @@ export type Goals = {
 	deadline?: string | null,
 };
 
+export type GraphNode = {
+	id: string,
+	name: string,
+	type: string,
+	mentions: number,
+};
+
+export type HistoryEntry = {
+	at: string,
+	text: string,
+	status: Status,
+	by: Author,
+	/**  What happened: "replaced by a newer reading", "edited", "made canon". */
+	note: string,
+};
+
 /**  A hit chosen for replacement. */
 export type HitRef = {
 	docId: string,
 	block: number,
 	start: number,
 	end: number,
+};
+
+export type Idea = {
+	id: string,
+	/**
+	 *  `next`, `stakes`, `reaction`, `sensory`, `thread`, `question`, `point`,
+	 *  `counter`, `evidence`, `term`, `transition`.
+	 */
+	type: string,
+	text: string,
+	refs: PassageRef[],
+	/**  The context-log entry of the request that made it ("Why?"). */
+	contextId: string,
+};
+
+export type IdeasRequest = {
+	docId: string,
+	/**  The scene's plain text up to the cursor; paragraphs are separated by a blank line. */
+	textBefore: string,
+	/**  Ideas the author dismissed this session: do not suggest them again. */
+	avoid: string[],
+	/**  Made by the panel on its own (idle work) rather than asked for. */
+	auto: boolean,
+};
+
+export type IdeasResult = {
+	ideas: Idea[],
+	contextId: string,
+	/**  Set when the model was not asked or could not answer. */
+	note: string | null,
+};
+
+export type IndexState = 
+/**  Memory is turned off, or no project is open. */
+"off" | "upToDate" | 
+/**  Scenes are waiting (for the author to be idle, or for the model). */
+"pending" | "working" | 
+/**  Held back while the author types. */
+"paused" | 
+/**  The model is not running. */
+"noModel";
+
+/**
+ *  One line in the Memory Inspector: a record of any kind, with where it came
+ *  from. Bulk actions address rows by `item`.
+ */
+export type InspectorRow = {
+	/**  `entity`, `fact`, `relation`, `event`, `thread`, `scene`, `mention`, `metric`. */
+	kind: string,
+	id: string,
+	/**  What it is called: the entry's name, the fact text, "Mara → Jon: sibling". */
+	label: string,
+	detail: string,
+	status: Status | null,
+	createdBy: Author | null,
+	updated: string,
+	source: Source | null,
+	/**  The entry this belongs to (for facts, relations, mentions). */
+	entityId: string | null,
+	entityName: string | null,
+	/**  Set for kinds that bulk actions can address. */
+	item: ItemRef | null,
+};
+
+export type ItemKind = "entity" | "fact" | "relation" | "event";
+
+/**  A record in the Memory Inspector, addressed for bulk actions. */
+export type ItemRef = {
+	kind: ItemKind,
+	id: string,
+	/**  The owning entry, for facts and relations. */
+	entity: string | null,
 };
 
 export type LabelDef = {
@@ -516,11 +776,65 @@ export type MarginEvent = {
 	event: DomainEvent,
 };
 
+export type MatrixCell = {
+	entityId: string,
+	sceneId: string,
+	count: number,
+};
+
+/**  Memory settings kept per machine (paths are machine-specific). */
+export type MemoryConfig = {
+	schemaVersion: number,
+	/**  Read scenes in the background (SPEC §9.4). */
+	indexing: boolean,
+	/**  Seconds a scene must stay unchanged before it is read. */
+	settleSeconds: number,
+	/**  Flag inferred facts that disagree with canon (SPEC §9.1). Off by default. */
+	flagConflicts: boolean,
+	embeddingEnabled: boolean,
+	embeddingBinary: string,
+	embeddingModel: string,
+	embeddingPort: number,
+	/**  Start the embedding server when a project opens. */
+	embeddingAutoStart: boolean,
+};
+
+export type MemoryStatus = {
+	state: IndexState,
+	pending: number,
+	total: number,
+	current: string | null,
+	lastError: string | null,
+	embeddings: EmbeddingStatus,
+	entries: number,
+};
+
+export type MentionMatrix = {
+	entities: EntitySummary[],
+	scenes: SceneRef[],
+	cells: MatrixCell[],
+};
+
+export type MentionRow = {
+	sceneId: string,
+	sceneTitle: string,
+	count: number,
+	/**  First paragraph that mentions the entry in this scene. */
+	first: Source | null,
+};
+
 export type MergeResult = {
 	/**  The document that now holds the merged text. */
 	target: string,
 	/**  The other documents, now in the Trash. */
 	trashed: string[],
+};
+
+export type MetricPoint = {
+	sceneId: string,
+	title: string,
+	order: number,
+	value: number | null,
 };
 
 /**  Everything the Model panel shows (SPEC §6.7). */
@@ -548,6 +862,42 @@ export type NewProject = {
 };
 
 export type Outcome = "completed" | "cancelled" | "failed";
+
+export type PassageHit = {
+	doc: string,
+	docTitle: string,
+	para: string,
+	block: number,
+	text: string,
+	score: number | null,
+};
+
+export type PassageRef = {
+	doc: string,
+	docTitle: string,
+	para: string | null,
+	block: number | null,
+	quote: string,
+};
+
+export type PhrasingRequest = {
+	docId: string,
+	selected: string,
+	before: string,
+	after: string,
+};
+
+export type PhrasingResult = {
+	alternatives: string[],
+	contextId: string,
+	note: string | null,
+};
+
+export type PinnedIdea = {
+	idea: Idea,
+	doc: string,
+	pinnedAt: string,
+};
 
 export type PmMark = {
 	type: string,
@@ -687,6 +1037,43 @@ export type RecoveryEntry = {
 	wordCount: number,
 };
 
+export type Relation = {
+	id: string,
+	/**  The entity this relation points to. */
+	to: string,
+	/**
+	 *  `sibling`, `parent`, `ally`, `rival`, `romantic`, `member-of`, `located-in`,
+	 *  `owns`, `mentor`, or any custom word.
+	 */
+	kind: string,
+	directed: boolean,
+	status: Status,
+	source?: Source | null,
+	/**  Story time the relation starts, as the author or the text words it. */
+	since?: string | null,
+	createdBy: Author,
+	updated: string,
+};
+
+export type RelationGraph = {
+	nodes: GraphNode[],
+	edges: RelationView[],
+};
+
+export type RelationView = {
+	id: string,
+	from: string,
+	fromName: string,
+	to: string,
+	toName: string,
+	kind: string,
+	directed: boolean,
+	status: Status,
+	source: Source | null,
+	since: string | null,
+	createdBy: Author,
+};
+
 export type ReplaceReport = {
 	replaced: number,
 	docIds: string[],
@@ -695,7 +1082,11 @@ export type ReplaceReport = {
 };
 
 /**  What a request is for. Drives sampling defaults and the log label. */
-export type Role = "ghost" | "ideas" | "ask" | "extraction" | 
+export type Role = "ghost" | "ideas" | "ask" | 
+/**  Margin panel → Phrasing: alternatives for a selection. */
+"phrasing" | "extraction" | 
+/**  Chapter and book summaries (idle work). */
+"summary" | 
 /**  Model panel "try it", bake-off and other non-book requests. */
 "test";
 
@@ -730,6 +1121,37 @@ export type Sampling = {
 export type SaveResult = {
 	revision: string,
 	wordCount: number,
+};
+
+/**  One AI-written card per scene (SPEC §9.3). */
+export type SceneCard = {
+	schemaVersion: number,
+	sceneId: string,
+	summary: string,
+	pov: string | null,
+	tense: string | null,
+	location: string | null,
+	storyTime: StoryTime | null,
+	entitiesPresent: string[],
+	threadsTouched: string[],
+	metrics: { [key in string]: number | null },
+	/**  Hash of the scene text this card was made from (dirty detection). */
+	sourceHash: string,
+	indexedAt: string,
+	createdBy: Author,
+};
+
+export type SceneCardView = {
+	card: SceneCard,
+	title: string,
+	order: number,
+};
+
+export type SceneRef = {
+	id: string,
+	title: string,
+	/**  Position in manuscript order. */
+	order: number,
 };
 
 /**
@@ -808,6 +1230,23 @@ export type SnapshotKind =
 /**  Taken by Margin before a large change (replace-all, restore). */
 "safety";
 
+/**
+ *  Where a fact, relation or event came from (SPEC §9.6: every item is
+ *  traceable to a passage).
+ */
+export type Source = {
+	/**  Document (scene) id. */
+	doc: string,
+	/**  Stable paragraph id, when the paragraph is known. */
+	para?: string | null,
+	/**
+	 *  Index of the text block when the source was recorded; a hint for jumping
+	 *  when the paragraph id can no longer be found.
+	 */
+	block?: number | null,
+	quote: string,
+};
+
 export type SpeedResult = {
 	presetId: string,
 	name: string,
@@ -857,6 +1296,17 @@ export type StatsSummary = {
 	daysLeft: number | null,
 };
 
+/**
+ *  Canon is what the author wrote or confirmed; inferred is what the model
+ *  read out of the text (SPEC §9.1). The AI never changes canon.
+ */
+export type Status = "canon" | "inferred";
+
+export type StoryTime = {
+	label: string,
+	order?: number | null,
+};
+
 /**  How the instruct template wraps a request when we send a raw prompt. */
 export type Template = "chatMl" | "gemma" | "mistral";
 
@@ -877,6 +1327,41 @@ export type ThinkingSwitch =
 "prefill" | 
 /**  Chat calls send `chat_template_kwargs: {enable_thinking: false}`. */
 "templateKwarg";
+
+export type ThreadData = {
+	status: ThreadStatus,
+	/**  Canon when the author set the status; the AI only moves an inferred one. */
+	statusCanon: boolean,
+	introducedIn?: string | null,
+	touches?: string[],
+	resolvedIn?: string | null,
+};
+
+export type ThreadStatus = "open" | "resolved" | "dropped";
+
+export type ThreadView = {
+	id: string,
+	title: string,
+	status: ThreadStatus,
+	statusCanon: boolean,
+	introducedIn: SceneRef | null,
+	touches: SceneRef[],
+	resolvedIn: SceneRef | null,
+	entryStatus: Status,
+};
+
+export type TimelineEvent = {
+	id: string,
+	title: string,
+	storyTime: StoryTime | null,
+	/**  The scene where the reader meets the event. */
+	narrativePos: string | null,
+	entities: string[],
+	source: Source | null,
+	status: Status,
+	createdBy: Author,
+	updated: string,
+};
 
 export type Timings = {
 	/**  Request sent → first token received. */
@@ -901,6 +1386,11 @@ export type TrashOrigin = {
 	/**  Parent node id, or `None` for the section root. */
 	parent?: string | null,
 	index: number,
+};
+
+export type TypeInfo = {
+	id: string,
+	title: string,
 };
 
 /**  Which smart-typography rules the author has on (SPEC §11.2). */

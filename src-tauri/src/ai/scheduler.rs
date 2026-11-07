@@ -267,7 +267,8 @@ impl Scheduler {
         let refuse;
         {
             let mut s = self.lock();
-            id = format!("job-{}", s.next_id);
+            // A ULID: it also names the job's context-log entry ("Why?", SPEC §8.2).
+            id = ulid::Ulid::generate().to_string();
             s.next_id += 1;
             refuse = if !s.enabled {
                 Some("AI is turned off")

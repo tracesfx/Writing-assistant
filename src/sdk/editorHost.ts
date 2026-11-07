@@ -21,6 +21,10 @@ export interface EditorHandleApi {
   readonly tabId: string;
   /** Plain text of the selection (empty if none). */
   selectedText(): string;
+  /** The document's plain text up to the cursor (paragraphs separated by a blank line). */
+  textBeforeCursor(): string;
+  /** The selection with some text on either side (for Phrasing). */
+  selectionContext(): { text: string; before: string; after: string };
   /** Insert text at the cursor (replacing the selection) as one undo step. */
   insertText(text: string): void;
   /** Select a range and scroll it into view. */

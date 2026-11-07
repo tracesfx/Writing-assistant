@@ -11,7 +11,11 @@ pub enum Role {
     Ghost,
     Ideas,
     Ask,
+    /// Margin panel → Phrasing: alternatives for a selection.
+    Phrasing,
     Extraction,
+    /// Chapter and book summaries (idle work).
+    Summary,
     /// Model panel "try it", bake-off and other non-book requests.
     Test,
 }
@@ -49,8 +53,10 @@ pub fn default_sampling(role: Role) -> Sampling {
         match role {
             Role::Ghost => (0.7, 0.9, 0.05, 16, vec!["\n".into()]),
             Role::Ideas => (0.9, 0.95, 0.05, 400, vec![]),
-            Role::Ask => (0.3, 0.9, 0.05, 400, vec![]),
-            Role::Extraction => (0.1, 1.0, 0.0, 1200, vec![]),
+            Role::Ask => (0.3, 0.9, 0.05, 500, vec![]),
+            Role::Phrasing => (0.9, 0.95, 0.05, 400, vec![]),
+            Role::Extraction => (0.1, 1.0, 0.0, 3000, vec![]),
+            Role::Summary => (0.2, 0.95, 0.02, 300, vec![]),
             Role::Test => (0.7, 0.9, 0.05, 64, vec![]),
         };
     Sampling {

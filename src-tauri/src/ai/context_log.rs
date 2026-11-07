@@ -98,7 +98,7 @@ impl ContextLog {
         let c = &job.completion;
         let entry = ContextLogEntry {
             schema_version: SCHEMA_VERSION,
-            id: ulid::Ulid::generate().to_string(),
+            id: job.id.clone(),
             timestamp: chrono::Local::now().to_rfc3339(),
             role: job.spec.role,
             priority: job.spec.priority,
@@ -196,7 +196,8 @@ mod tests {
 
     fn job(n: u32) -> FinishedJob {
         FinishedJob {
-            id: format!("job-{n}"),
+            // Entries are named by the job id, a ULID: later jobs sort later.
+            id: ulid::Ulid::from_parts(1_700_000_000_000 + u64::from(n), 1).to_string(),
             spec: JobSpec {
                 priority: Priority::P0,
                 role: Role::Ghost,

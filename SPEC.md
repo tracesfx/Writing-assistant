@@ -53,6 +53,13 @@ Everything runs on the author's machine. Nothing leaves `localhost`.
 | Markdown dialect | Implemented once, in Rust. The editor exchanges ProseMirror-shaped JSON with the backend. Losslessness is defined on the canonical form: `serialize(parse(md)) == md` for canonical files, and `parse(serialize(doc)) == doc` |
 | Ghost text keys and focus (M3) | While a suggestion shows, **Esc is handled inside the editor** (ProseMirror consumes Esc before the app keymap sees it), so it cannot be rebound. Tab, Ctrl+→ and Alt+] / Alt+[ are ordinary rebindable commands (`editor.ghost.*`). A suggestion is dropped when the editor loses focus. A request made right after a key press waits for that key's notification to reach the backend: IPC calls are separate requests and can overtake each other, which cancelled Alt+] alternatives |
 | Provenance storage (M3) | Accepted AI text is tracked as editor plugin ranges (never a mark or node), mapped through edits, and saved to `.margin/provenance/<docId>.json` as UTF-16 offsets into the document's plain text (non-empty text blocks joined by a blank line, so empty paragraphs do not matter) plus the SHA-256 of that text, once the document itself is saved. A hash mismatch drops the record with one notice. It is not rebuildable, yet `.margin/` is left out of backups and history: moving it to the project's own files is an open question for the author |
+| Paragraph ids (M4) | Ids live in a sidecar map per document, `memory/paragraphs/<docId>.json`, reconciled after every save (identical text keeps its id, edited text keeps it by word overlap ≥ 0.6, new text gets a new ULID). They are **not** editor node attributes: the editor, the Markdown and the undo history are untouched, and a lost sidecar degrades a citation to its quote and block hint. Sidecars are plain project files, so they are backed up and versioned |
+| Memory index store (M4) | No `index.db`. Entries, facts, relations, scene cards, the timeline and summaries are plain files (§9.3). Mentions are derived from the text on demand. Paragraph vectors are a flat cache, `.margin/embeddings.json`, searched by brute-force cosine: at book scale that is as fast as `sqlite-vec` and needs no native extension. Keyword search (BM25) always works; embeddings are optional and need a GGUF embedding model the author downloads (Margin never downloads models), run as a second CPU `llama-server --embedding` (§9.5) |
+| Reading a scene (M4) | One grammar-constrained call per scene, or per window of whole paragraphs (≈4,500 tokens) for a scene too long for the 16K slot. llama.cpp writes object keys **alphabetically**, so the schema's keys carry letter prefixes (`a_scene`, `b_entities`, …) and the summary and cast come out first; a truncated answer is repaired. Relation kinds are a closed list. Before anything is kept: an entry must be named in the scene text, a fact must be a sentence that names its entry, a relation's paragraph must name both entries, and every source points at a real paragraph (a quote that is not in the paragraph becomes the paragraph's opening). Scenes under 12 words and AI-off or forgotten documents are not read. A reading never changes canon (§9.1, §17 check 9) |
+| Margin panel shortcuts (M4) | `Ctrl+Shift+M` toggles the Margin panel, as §8 says. The Binder's "merge selected documents" also had `Ctrl+Shift+M` (M1); it applies only with two or more binder items selected and wins then, so the key is context-sensitive and both stay rebindable |
+| "To note" (M4) | A scene has no notes field (the file format is unchanged), so "To note" appends to a note document named "<scene> — notes" in the Notes section, created on first use. Pins live in `memory/ideas.json` |
+| Context log ids (M4) | A context-log entry is named by its request's job id (a ULID), so a card's "Why?" and `Ctrl+Shift+L` open exactly that request |
+| Memory exclusions (M4) | "Forget this document" is a list in `memory/settings.json`. Documents with AI off are excluded too |
 
 ---
 
@@ -752,11 +759,11 @@ Build order puts quality of life and the framework first. Each milestone ends wi
 - Provenance marks and visible stats
 - ✅ Acceptance checks 2–5 and 8.
 
-**M4 — Story Memory and Margin panel**
+**M4 — Story Memory and Margin panel** ✅ (2026-11-06)
 - Indexer and extraction schema, CPU embeddings, paragraph IDs
 - Bible UI with canon/inferred, Memory Inspector, Context Inspector, memory export
 - Ideas / Ask / Phrasing tabs
-- ✅ "Ask my book" answers with correct citations on a 50k-word test manuscript. Acceptance check 9.
+- ✅ "Ask my book" answers with correct citations on a 50k-word test manuscript. Acceptance checks 9, 10 and 11 (see `docs/progress.md`).
 
 **M5 — Insights workspace**
 - The six reference views as independent modules

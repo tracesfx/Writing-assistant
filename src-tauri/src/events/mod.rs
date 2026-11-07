@@ -80,6 +80,22 @@ pub enum DomainEvent {
         stage: String,
         finished: bool,
     },
+    /// Story Memory changed (SPEC §5.2): entries, facts, scene cards, … `kinds`
+    /// says which of `entities`, `facts`, `relations`, `events`, `scenes`, `summaries`.
+    #[serde(rename = "memory.updated", rename_all = "camelCase")]
+    MemoryUpdated {
+        entity_ids: Vec<String>,
+        scene_ids: Vec<String>,
+        kinds: Vec<String>,
+    },
+    /// The indexer's state changed (SPEC §9.4 step 5).
+    #[serde(rename = "index.progress", rename_all = "camelCase")]
+    IndexProgress {
+        state: crate::memory::views::IndexState,
+        pending: u32,
+        total: u32,
+        current: Option<String>,
+    },
     #[serde(rename = "backup.finished", rename_all = "camelCase")]
     BackupFinished {
         path: Option<String>,

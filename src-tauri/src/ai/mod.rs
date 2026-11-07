@@ -73,6 +73,8 @@ pub struct AiService {
     last_status: Mutex<Option<(AiStatus, String)>>,
     ghosts: Mutex<GhostBook>,
     story: Arc<StoryService>,
+    /// Story Memory, set once after both services exist (it also uses this service).
+    memory: std::sync::OnceLock<Weak<crate::memory::MemoryService>>,
     pub scheduler: Scheduler,
     pub supervisor: Arc<Supervisor>,
     pub context_log: Arc<ContextLog>,
@@ -144,6 +146,7 @@ impl AiService {
                 last_status: Mutex::new(None),
                 ghosts: Mutex::new(GhostBook::default()),
                 story: story.clone(),
+                memory: std::sync::OnceLock::new(),
                 scheduler,
                 supervisor,
                 context_log: context_log.clone(),
@@ -167,6 +170,15 @@ impl AiService {
             _ => {}
         });
         svc
+    }
+
+    /// Connect Story Memory (called once at startup).
+    pub fn set_memory(&self, m: Weak<crate::memory::MemoryService>) {
+        let _ = self.memory.set(m);
+    }
+
+    pub fn memory(&self) -> Option<Arc<crate::memory::MemoryService>> {
+        self.memory.get().and_then(Weak::upgrade)
     }
 
     // --- Configuration -----------------------------------------------------------
@@ -500,7 +512,7 @@ impl AiService {
     }
 
     /// What the prompt builder needs, or `None` when AI is off for this document.
-    fn ghost_context(&self, doc_id: &str) -> Result<Option<GhostContext>> {
+    fn ghost_context(&self, doc_id: &str, text_before: &str) -> Result<Option<GhostContext>> {
         let meta = self.story.document_meta(doc_id)?;
         if meta.ai == crate::project::document::AiToggle::Off {
             return Ok(None);
@@ -512,6 +524,10 @@ impl AiService {
             doc_title: meta.title,
             pov: meta.pov,
             synopsis: meta.synopsis,
+            cards: self
+                .memory()
+                .map(|m| m.cards_for(text_before, ghost::CARDS_BUDGET))
+                .unwrap_or_default(),
         }))
     }
 
@@ -533,7 +549,8 @@ impl AiService {
         }
         let me = self.clone();
         let doc_id = req.doc_id.clone();
-        let ctx = tokio::task::spawn_blocking(move || me.ghost_context(&doc_id))
+        let before = req.text_before.clone();
+        let ctx = tokio::task::spawn_blocking(move || me.ghost_context(&doc_id, &before))
             .await
             .map_err(|e| MarginError::Internal(e.to_string()))
             .and_then(|r| r);

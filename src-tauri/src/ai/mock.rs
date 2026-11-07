@@ -24,7 +24,12 @@ pub struct MockConfig {
     /// Answer `/health` with 503 "Loading model" for this long after start.
     pub loading_for: Duration,
     pub native: bool,
+    /// Decide the reply from the request body (the prompt for `/completion`, the messages
+    /// for chat); returns the streamed tokens. `None` streams `tokens`.
+    pub responder: Option<Responder>,
 }
+
+pub type Responder = Arc<dyn Fn(&Value) -> Vec<String> + Send + Sync>;
 
 impl Default for MockConfig {
     fn default() -> Self {
@@ -38,6 +43,7 @@ impl Default for MockConfig {
             total_slots: 2,
             loading_for: Duration::ZERO,
             native: true,
+            responder: None,
         }
     }
 }
@@ -213,8 +219,21 @@ async fn handle(
             )
             .await
         }
-        ("POST", "/completion") if cfg.native => stream(sock, st, cfg, true).await,
-        ("POST", "/v1/chat/completions") => stream(sock, st, cfg, false).await,
+        ("POST", "/v1/embeddings") => {
+            let inputs: Vec<String> = match body.get("input") {
+                Some(Value::Array(a)) => a.iter().filter_map(|x| x.as_str().map(String::from)).collect(),
+                Some(Value::String(s)) => vec![s.clone()],
+                _ => vec![],
+            };
+            let data: Vec<Value> = inputs
+                .iter()
+                .enumerate()
+                .map(|(i, t)| json!({"index": i, "embedding": fake_embedding(t)}))
+                .collect();
+            respond_json(&mut sock, "200 OK", &json!({"data": data})).await
+        }
+        ("POST", "/completion") if cfg.native => stream(sock, st, cfg, true, body).await,
+        ("POST", "/v1/chat/completions") => stream(sock, st, cfg, false, body).await,
         _ => respond_json(&mut sock, "404 Not Found", &json!({"error": "not found"})).await,
     }
 }
@@ -224,7 +243,15 @@ async fn stream(
     st: Arc<MockState>,
     cfg: MockConfig,
     native: bool,
+    body: Value,
 ) -> std::io::Result<()> {
+    let cfg = match &cfg.responder {
+        Some(f) => MockConfig {
+            tokens: f(&body),
+            ..cfg.clone()
+        },
+        None => cfg,
+    };
     st.streams_started.fetch_add(1, Ordering::SeqCst);
     sock.write_all(
         b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n",
@@ -287,4 +314,21 @@ fn client_left(st: &MockState) -> std::io::Result<()> {
     st.disconnected.fetch_add(1, Ordering::SeqCst);
     st.changed.notify_waiters();
     Ok(())
+}
+
+/// A deterministic stand-in embedding: words hashed into 32 buckets, so texts that
+/// share words are close.
+pub fn fake_embedding(text: &str) -> Vec<f32> {
+    let mut v = vec![0f32; 32];
+    for w in text
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.len() > 2)
+    {
+        let h = w
+            .to_lowercase()
+            .bytes()
+            .fold(7u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
+        v[(h % 32) as usize] += 1.0;
+    }
+    v
 }

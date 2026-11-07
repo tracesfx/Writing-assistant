@@ -1,6 +1,6 @@
 # `@margin/sdk`
 
-The only API that modules use (SPEC §5). `sdkVersion` is `0.4.0`. It stays pre-1.0 while milestones M1–M5 shape it; breaking changes are listed at the end of this file.
+The only API that modules use (SPEC §5). `sdkVersion` is `0.5.0`. It stays pre-1.0 while milestones M1–M5 shape it; breaking changes are listed at the end of this file.
 
 ## Modules
 
@@ -155,8 +155,38 @@ editorHost.active() / forDoc(docId) / all()
 editorHost.openAt(docId, target)       // open and reveal a text range or position
 editorHost.flushAll()                  // save every dirty editor (before history, search, merge…)
 handle.selectedText() / insertText(text) / reveal(target) / cursor() / setCursor(pos) / focus()
+handle.textBeforeCursor() / selectionContext()   // plain text up to the cursor; the selection with text around it
 handle.revealComment(id) / removeComment(id) / isDirty() / flush()
 ```
+
+## Story Memory — `memory`, `useMemoryStatus`, `useMemoryVersion`
+
+The bible, scene cards, mentions, threads and retrieval (SPEC §5.1). Reads are open to every module; writes go to the Rust service, which enforces the canon rules (the AI cannot change canon whatever the UI does).
+
+```ts
+memory.entities.list({ type?, query? }) / get(id) / create(type, name) / update(id, patch) / delete(id) / restore(entity) / types()
+memory.facts.add / update / delete          memory.relations.list / graph / add / delete
+memory.mentions.byEntity(id) / matrix(types)        memory.timeline.events()       memory.threads.list(status?)
+memory.scenes.cards()                       memory.metrics.series(key)      // words, dialogueRatio, entityCount, or an extractor's key
+memory.search.text(q, k) / semantic(q, k)   // keywords, or keywords + embeddings when the embedding server is up
+memory.resolve(source)                      // where a stored source points now
+memory.makeCanon(items) / deleteInferred(items)             // bulk, from the Memory Inspector
+memory.inspector.rows()                     // everything the model tracks, one row each
+memory.status() / config.get/set / focus(docId) / reindexScene(docId) / rebuildAll() / forgetDocument(docId, forget)
+memory.margin.ideas / expand / pin / unpin / pinned / toNote / ask / phrasing
+memory.export(dir, format) / import(path)
+openSource({ doc, para?, block?, quote })   // open the scene and select the quoted words
+useMemoryVersion()                          // bumps on memory.updated: refetch when it changes
+useMemoryStatus()                           // { state, pending, total, embeddings, … } for status bars
+```
+
+View and panel ids shared between modules: `BIBLE_ENTRY_VIEW`, `MEMORY_INSPECTOR_VIEW`, `CONTEXT_VIEW` (the Context Inspector; `resourceId` is a context-log id), `MARGIN_PANEL`, `BIBLE_PANEL`.
+
+Events: `memory.updated { entityIds, sceneIds, kinds }` and `index.progress { state, pending, total, current }`.
+
+## Margin tabs — `marginTabs`
+
+`marginTabs: [{ id, title, order?, component }]` adds a tab to the Margin panel. The component gets `{ active }`. Ideas, Ask my book and Phrasing are the first consumers. `useMarginTabs()` is for the panel itself.
 
 ## Lifecycle — `lifecycle`
 
@@ -164,4 +194,4 @@ handle.revealComment(id) / removeComment(id) / isDirty() / flush()
 
 ## Breaking changes
 
-None yet. 0.4.0 only added the ghost-text and provenance APIs above (`ai.ghost`, `ai.status`, `ai.isReady`, `story.provenance`, `aiSession`, the `ai.ghost` and `ai.provenanceChanged` events, and the ghost-text and Flow-mode settings). 0.3.0 only added the `ai` client and the `ai.*` events. 0.2.0 only added APIs (settings, uiState, editorHost, prompt, right sidebar, `activate()`, notice keys, and the Story calls above).
+None yet. 0.5.0 only added the Story Memory client (`memory`, `openSource`, the memory hooks and events), the concrete `marginTabs` extension point, and `textBeforeCursor` / `selectionContext` on editor handles. 0.4.0 only added the ghost-text and provenance APIs above (`ai.ghost`, `ai.status`, `ai.isReady`, `story.provenance`, `aiSession`, the `ai.ghost` and `ai.provenanceChanged` events, and the ghost-text and Flow-mode settings). 0.3.0 only added the `ai` client and the `ai.*` events. 0.2.0 only added APIs (settings, uiState, editorHost, prompt, right sidebar, `activate()`, notice keys, and the Story calls above).

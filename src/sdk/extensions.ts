@@ -73,12 +73,19 @@ export interface SettingsPageContribution {
   component: ComponentType;
 }
 
-/* Extension points without an M1 consumer. Their shapes are placeholders and
- * become concrete in the milestone that adds their first consumer. */
+/* Extension points whose shapes become concrete in the milestone that adds
+ * their first consumer. `marginTabs` has been concrete since M4. */
+export interface MarginTabProps {
+  /** True while this tab is the one showing. */
+  active: boolean;
+}
+
+/** A tab in the Margin panel (SPEC §8.1): Ideas, Ask my book, Phrasing. */
 export interface MarginTabContribution {
   id: string;
   title: string;
-  component: ComponentType;
+  order?: number;
+  component: ComponentType<MarginTabProps>;
 }
 export interface InspectorSectionContribution {
   id: string;

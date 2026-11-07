@@ -236,3 +236,55 @@ Also measured: time to first token 130–395 ms for a suggestion (the first requ
 ### Tests (M3)
 - Rust: 136 pass (30 new: ghost prompt and post-processing, provenance storage, ghost requests end to end against the mock server including cancel and "cancel before request", preset migration and its write-back); clippy and fmt clean.
 - Vitest: 99 pass, 66 of them new (`ghost.test.ts` 48, `provenance.test.ts` 16, `sha256.test.ts` 2); typecheck and ESLint clean.
+
+## M4 — Story Memory and the Margin panel (2026-11-06)
+
+### Decisions (recorded in SPEC §1.2)
+- **Paragraph ids** are a backend sidecar (`memory/paragraphs/<docId>.json`), not editor node attributes: the editor, the Markdown and undo are untouched; ids survive edits by text similarity.
+- **No `index.db`.** Entries, cards, timeline and summaries are plain files; mentions are derived from the text; paragraph vectors are a flat cache (`.margin/embeddings.json`) with a brute-force cosine scan. BM25 keyword search always works; embeddings are optional and need a GGUF the author downloads (nothing was downloaded: **no embedding model is on this machine**, so the embedding path is tested against the mock only).
+- **Reading a scene**: grammar-constrained JSON, one call per scene (or per ≈4,500-token window of whole paragraphs for long scenes). Closed list of relation kinds; every claim is checked against the scene before it is kept.
+- **`Ctrl+Shift+M`** toggles the Margin panel (SPEC §8). The Binder's merge shortcut had the same key (M1); it applies only with two or more binder items selected and wins then. Both stay rebindable.
+- **"To note"** appends to a "<scene> — notes" document in the Notes section (scenes have no notes field; the file format is unchanged).
+- A context-log entry is named by its request's job id, so "Why?" and `Ctrl+Shift+L` open exactly that request.
+
+### Build checklist
+- [x] `memory/types.rs`, `store.rs` — entries as `bible/<type>/<slug>--<id>.md` (YAML + notes), scene cards, timeline, summaries, exclusions. **Canon rules in the Rust store**: `ai_*` commands only create or update `inferred` records and refuse canon; bulk delete refuses canon; deleting an entry is recoverable (`bible/.trash/`)
+- [x] `memory/paragraphs.rs` — paragraph id sidecar, reconciled after every save (exact, then by word overlap)
+- [x] `memory/extract.rs`, `merge.rs` — prompt (numbered paragraphs, known entries, worked example), JSON schema, lenient reader (repairs answers cut off at the token limit), merge with canon protection, conflict flagging (opt-in), history on changed readings
+- [x] `memory/indexer.rs` — idle-only pipeline: dirty by text hash, settle time, nearest-the-cursor first, one scene at a time as a P2 job, retry backoff, chapter and book summaries, `index.progress` / `memory.updated`; commands Re-index scene, Rebuild all memory, Forget this document
+- [x] `memory/search.rs` — BM25 + embeddings (second `llama-server --embedding` on the CPU, managed like the main one) fused by rank; vector cache
+- [x] `memory/margin.rs` — Ideas (typed, validated, with refs and a dismissed list), Expand, Pin, To note, Ask my book (evidence from facts, relations, scene cards and passages; citations only to evidence that exists; says so when the book has nothing), Phrasing; bible cards for ghost prompts (`[4]`)
+- [x] `memory/export.rs` — JSON (and import), CSV per record type, Markdown Story Bible, GraphML
+- [x] Frontend: `@margin/sdk` 0.5.0 (`memory`, `openSource`, hooks, `marginTabs` extension point); modules `bible` (Bible panel, entry view, Memory Inspector, status item, Settings → Memory) and `margin` (Margin panel with Ideas / Ask my book / Phrasing); Context Inspector view and `Ctrl+Shift+L`; dotted underline for inferred
+- [x] Docs: `docs/data-format.md` (bible, memory, exports), `docs/sdk.md` (0.5.0), SPEC §1.2 and §16
+
+### Findings (bugs found by running it for real, fixed, with tests)
+- **llama.cpp writes JSON object keys alphabetically**, whatever order the schema lists. The scene summary came out near the end and was cut off when the answer hit the token limit (empty summaries). The schema's keys now carry letter prefixes (`a_scene`, `b_entities`, …) so the order they come out in is the order we want; a test checks it. The extraction token limit went from 1,800 to 3,000.
+- **Fragmentary facts** ("fatigued") and a **made-up relation** ("employer") from the 9B model. Fixed with a worked example in the prompt, a closed list of relation kinds, and merge rules: a fact must be a sentence that names its entry, a relation's paragraph must name both entries, aliases are at most four words.
+- **A thread title became an alias of a person** (fuzzy name matching let "Will Mr. Bingley marry…?" match "Mr. Bingley"). Fuzzy matching is now limited to the same type and short names; threads match only exactly. Test added.
+- **Inferred threads were pruned as orphans** (no facts, not named in the text). Threads touched by scenes now count as supported.
+- **"Forget this document" left entries that only that document supported** (the mention check used all documents). It now counts only documents memory may use.
+- `float_roundtrip` enabled in `serde_json`: without it a scene card's `dialogueRatio` came back one digit different after a save and reload.
+- Context-log entries were named by a fresh id, so a card could not point at its request; they are now named by the job id (two old tests used non-ULID job ids).
+- Scene summaries in the idle pass wrote `{}` in tests until the mock answered summary prompts (test-only).
+
+### Acceptance (M4): checks 9, 10, 11 and the Ask-my-book run — ✅ 2026-11-06
+Real model (Ternary Bonsai 9B on :8080), real app, throwaway projects.
+- [x] **Reading a 51,840-word, 27-chapter novel** (first 27 chapters of *Pride and Prejudice*, `fixtures/manuscript50k/`): all 27 scenes read in about 1,060–1,080 s (≈ 39 s per chapter, as idle P2 work). Result: 92–95 entries, 218–219 facts, 52–58 relations, 117–119 events, 62–64 threads (two runs).
+- [x] **10 — every item traces to its passage.** 275 of 275 sources (facts and relations) resolve to a real paragraph that contains the quote. In the app: a fact's source, an Ask citation and an idea's reference each open the scene with the words selected in one click.
+- [x] **9 — canon survives.** A canon fact ("Mr. Darcy is a village schoolteacher", field occupation) was added before the whole book was read: byte-identical afterwards, the entry still canon, no inferred occupation beside it. Also covered deterministically with the mock (edit a canon fact, write a contradicting sentence, re-index, rebuild all).
+- [x] **11 — export round-trips; caches rebuild.** JSON export → wipe `bible/` and `memory/` → import gives identical entries, cards and events (test). Deleting `.margin/` and reloading gives the same entries, relations and cards, with nothing to re-read.
+- [x] **Ask my book on the 52k-word manuscript:** 4 of 5 questions answered with a relevant cited passage (Bingley's friend → Darcy; Collins; which sister → Jane; why Mrs. Bennet wants to meet Bingley). **One wrong answer**: "Where do the Lucases live?" got "near Cheapside" (the retrieved passage is about someone else); keyword retrieval missed "Lucas Lodge", and an embedding model would probably help. Of 19 citations shown, 9 contained the expected words; the others were loosely related passages or facts. The question the book cannot answer (a pet dog) was refused with no citations.
+- [x] **In the running app (CDP):** status bar goes "Memory: reading" → "up to date"; inferred entries are marked with a dotted underline; "✓ make canon" turns one into canon; Ask answers with a clickable citation that selects the passage, and says so when the book does not know; Ideas cards, **Why?** opens the Context Inspector with sections [1]–[6]; Phrasing leaves the selection untouched until Replace selection, and one Ctrl+Z restores it; the ghost prompt now has `[4] Bible cards` and **Ctrl+Shift+L** opens it.
+- [x] **1 (memory and AI on) — typing at 120 wpm.** 640 characters at 102 wpm over 75 s with the model on and a scene waiting to be read: all 640 landed; keydown → next frame p50 2.8 ms, p95 3.6, p99 4.3, max 6.8 ms; none over 50 ms. Reading is held while typing (state "working, pending 1").
+
+### Known limits and notes
+- **No embedding model on this machine**, so the embedding path (second `llama-server --embedding`) is tested only against the mock; passage search is keyword-only until the author supplies a GGUF (Settings → Memory).
+- **Ctrl+Shift+I opens Edge DevTools in `tauri dev`** and swallows the key before the app sees it. DevTools are off in release builds. The command "Get ideas" works from the palette meanwhile, and the key is rebindable.
+- The 9B model's readings are useful, not perfect: some facts are loose paraphrases and some relations are wrong. That is why they are *inferred*, sourced, and one click from canon or deletion.
+- Not built: the `bibleTypes`, `aiTasks` and `memoryExtractors` extension points are still placeholders (M5 adds the `tension` extractor); the optional "fresh ideas" dot sits on the Ideas tab, not the toggle (ideas are only made automatically while the panel is open).
+- `.margin/embeddings.json` and the context log stay out of backups and history, as before.
+
+### Tests (M4)
+- Rust: 193 pass (58 new in `memory::`: store and canon rules, paragraph ids, extraction and merge, search, export and import, and end-to-end indexing, Ask, Ideas, Phrasing and ghost cards against the mock model), plus 3 opt-in live tests; clippy and fmt clean.
+- Vitest: 101 pass; typecheck and ESLint clean.

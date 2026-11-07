@@ -4,6 +4,7 @@
  */
 import type {
   CommandContribution,
+  MarginTabContribution,
   ModuleManifest,
   SettingsPageContribution,
   SidebarPanelContribution,
@@ -19,6 +20,7 @@ export interface Registry {
   modules: ModuleManifest[];
   views: Map<string, Owned<WorkspaceViewContribution>>;
   panels: Owned<SidebarPanelContribution>[];
+  marginTabs: Owned<MarginTabContribution>[];
   statusItems: Owned<StatusBarItemContribution>[];
   settingsPages: Owned<SettingsPageContribution>[];
   commands: Map<string, Owned<CommandContribution>>;
@@ -29,6 +31,7 @@ export function buildRegistry(modules: ModuleManifest[], isEnabled: (m: ModuleMa
   const enabled = modules.filter((m) => m.required || isEnabled(m));
   const views = new Map<string, Owned<WorkspaceViewContribution>>();
   const panels: Owned<SidebarPanelContribution>[] = [];
+  const marginTabs: Owned<MarginTabContribution>[] = [];
   const statusItems: Owned<StatusBarItemContribution>[] = [];
   const settingsPages: Owned<SettingsPageContribution>[] = [];
   const commands = new Map<string, Owned<CommandContribution>>();
@@ -48,6 +51,7 @@ export function buildRegistry(modules: ModuleManifest[], isEnabled: (m: ModuleMa
       else views.set(v.id, { ...v, moduleId: m.id });
     }
     for (const p of c.sidebarPanels ?? []) panels.push({ ...p, moduleId: m.id });
+    for (const t of c.marginTabs ?? []) marginTabs.push({ ...t, moduleId: m.id });
     for (const s of c.statusBarItems ?? []) statusItems.push({ ...s, moduleId: m.id });
     for (const s of c.settingsPages ?? []) settingsPages.push({ ...s, moduleId: m.id });
     for (const cmd of c.commands ?? []) {
@@ -63,6 +67,7 @@ export function buildRegistry(modules: ModuleManifest[], isEnabled: (m: ModuleMa
     modules: used,
     views,
     panels,
+    marginTabs,
     statusItems,
     settingsPages,
     commands,

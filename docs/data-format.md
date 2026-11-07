@@ -17,11 +17,14 @@ My Novel/
   .margin/
     recovery/<docId>.json   unsaved-edit journal (crash recovery)
     history/                hidden git repository of snapshots
+    embeddings.json         paragraph vectors (cache)
+  bible/                    the Story Bible: one .md file per entry (M4)
+  memory/                   scene cards, timeline, summaries, paragraph ids (M4)
 ```
 
 Author data (comments, stats, scratchpad, dictionary) lives in plain project files, so it travels with the folder, is backed up, and appears in history. `.margin/` holds only app-managed state that can be rebuilt or is about the app itself.
 
-Folders for the Story Bible (`bible/`), AI memory (`memory/`), and the remaining `.margin/` caches (SPEC §13) are added by later milestones and documented here then.
+The Story Bible (`bible/`) and AI memory (`memory/`) are described under "Story Memory" below. The remaining `.margin/` caches (SPEC §13) are documented as they are added.
 
 ## `project.yaml` (schemaVersion 1)
 
@@ -199,11 +202,63 @@ Next to `app-state.json`. Model connection and presets: `enabled` (the master sw
 
 ## `.margin/context-log/<ulid>.json` (schemaVersion 1)
 
-One file per AI request, the newest last (ULIDs sort by time). A ring buffer: only the newest `contextLogLimit` (default 500) are kept. Fields: `id`, `timestamp`, `role` (`ghost` | `ideas` | `ask` | `extraction` | `test`), `priority` (`P0`–`P2`), `slot`, `model`, `sections` (the prompt split into labelled parts `[1]`–`[6]` of SPEC §7.4, each with `label`, `text`, `tokens`), `rawPrompt` (the exact string sent to the server), `rawOutput`, `outcome` (`completed` | `cancelled` | `failed`), `error`, and `timings` (`ttftMs`, `totalMs`, `promptTokens`, `cachedTokens`, `outputTokens`, `decodeTps`). Bake-off requests are not logged here; their prompts and outputs are in the run file.
+One file per AI request, the newest last (ULIDs sort by time). The file name and `id` are the request's job id, so a card's "Why?" can open it. A ring buffer: only the newest `contextLogLimit` (default 500) are kept. Fields: `id`, `timestamp`, `role` (`ghost` | `ideas` | `ask` | `phrasing` | `extraction` | `summary` | `test`), `priority` (`P0`–`P2`), `slot`, `model`, `sections` (the prompt split into labelled parts `[1]`–`[6]` of SPEC §7.4, each with `label`, `text`, `tokens`), `rawPrompt` (the exact string sent to the server), `rawOutput`, `outcome` (`completed` | `cancelled` | `failed`), `error`, and `timings` (`ttftMs`, `totalMs`, `promptTokens`, `cachedTokens`, `outputTokens`, `decodeTps`). Bake-off requests are not logged here; their prompts and outputs are in the run file.
 
 ## `.margin/bakeoff/<ulid>.json` (schemaVersion 1)
 
 One bake-off run (without an open project: `<app config folder>/bakeoff/`). `runId`, `startedAt`, `source` (`sample` | `manuscript`), `finished`, `candidates` and `questions`. Each candidate has `speed` (VRAM, load time, cold and warm first-token times, decode speed, sentence time, the `--n-cpu-moe` used, the arguments, template warnings, and which go/no-go limits were missed) and `samples` (ten continuations). Each question has the text before the cut and its `options` shuffled as A, B, C…, each tagged with the `presetId` that wrote it, plus the author's `answer`. The file is not hidden from the author, but the app shows model names only after every question is answered.
+
+## Story Memory (M4): `bible/` and `memory/`
+
+Everything the model tracks is a plain file in the project folder, readable and editable without Margin, backed up and versioned with the rest of the project (SPEC §9.3). The AI only ever writes records marked `inferred`; `canon` records are the author's (SPEC §9.1).
+
+```
+bible/<type>/<slug>--<id>.md      one entry: YAML frontmatter + the author's notes as the body
+bible/.trash/<type>/…             deleted entries (undo brings them back)
+memory/scenes/<sceneId>.json      one scene card per scene
+memory/timeline.json              events
+memory/synopsis.json              the book summary
+memory/chapters/<chapterId>.json  chapter summaries
+memory/paragraphs/<docId>.json    paragraph id maps
+memory/ideas.json                 pinned ideas, and which note document each scene's ideas go to
+memory/settings.json              documents the author excluded ("Forget this document")
+```
+
+### `bible/<type>/<slug>--<id>.md` (schemaVersion 1)
+
+Frontmatter fields: `schemaVersion`, `id` (ULID), `type` (`character`, `location`, `item`, `group`, `event`, `thread`, `term` for fiction; `concept`, `claim`, `source`, `person`, `outline` for non-fiction; `style` for both; modules may add more), `name`, `aliases` (`[{ text, status }]`), `fields` (the author's own key/value pairs; the AI never writes these), `facts`, `relations`, `tags`, `status` (`canon` | `inferred`), `createdBy` (`author` | `ai`), `created`, `updated`, and for plot threads `thread` (`status`: `open` | `resolved` | `dropped`, `statusCanon`, `introducedIn`, `touches`, `resolvedIn`). The body is the author's notes in Markdown. The folder name is the type; the slug is only for people, and the id is the identity (renaming moves the file). Folders starting with a dot are skipped.
+
+A **fact** has `id`, `text`, optional `field` (an attribute such as "eye colour"; facts sharing one are alternatives), `status`, `source` (`{ doc, para, block, quote }`: the scene, the paragraph id, the block index at the time, and a quote), `history` (earlier readings: `at`, `text`, `status`, `by`, `note`), `conflictsWith` (conflict flagging only), `createdBy`, `updated`. A **relation** has `id`, `to` (an entry id), `kind`, `directed`, `status`, `source`, `since`, `createdBy`, `updated`; it is stored on the "from" entry, and symmetric kinds (sibling, ally, rival, romantic, friend, enemy, spouse, partner, colleague) are stored once. A relation or fact whose entry was deleted is ignored until the entry is restored.
+
+Canon rules, enforced in the Rust store (`memory::store`): the AI creates entries, aliases, facts and relations as `inferred`; it never edits or deletes a canon record, and where a canon fact exists for the same entry and `field` a differing reading is dropped (or kept as an `inferred` fact with `conflictsWith`, if conflict flagging is on). An inferred fact the text later contradicts is updated in place and keeps its old text in `history`. The author's edit of an inferred fact, alias list or relation makes it canon; "make canon" does the same without editing.
+
+### `memory/scenes/<sceneId>.json` (schemaVersion 1)
+
+`sceneId`, `summary`, `pov`, `tense`, `location`, `storyTime` (`{ label, order }`), `entitiesPresent` (entry ids, found by name in the text, not by the model), `threadsTouched`, `metrics` (`words`, `dialogueRatio`, `entityCount` at the time of reading; a `memoryExtractors` module adds more), `sourceHash` (the hash of the scene's paragraph text at the time: the scene is dirty when it differs), `indexedAt`, `createdBy`.
+
+### `memory/timeline.json`, `synopsis.json`, `chapters/<id>.json`
+
+`timeline.json`: `{ schemaVersion, events: [{ id, title, storyTime, narrativePos (a scene id), entities, source, status, createdBy, updated }] }`. A summary file has `id`, `summary`, `sourceHashes` (the card hashes it was made from; a change makes it stale) and `updated`.
+
+### `memory/paragraphs/<docId>.json` (schemaVersion 1)
+
+`docId`, `textHash` (of the paragraph text only, so formatting-only edits do not make a scene dirty) and `paras`: `{ id, block, hash, text }` for each non-empty text block in order. After every save the map is reconciled with the new text: unchanged paragraphs keep their id, edited ones are matched by word overlap (at least 0.6), new ones get a new ULID. The Markdown holds no ids. If this file is lost, citations fall back to the quote and the block hint.
+
+### `memory/ideas.json`, `memory/settings.json`
+
+`ideas.json`: `pinned` (`{ idea, doc, pinnedAt }`) and `notes` (scene id → the Notes-section document that "To note" appends to). `settings.json`: `excluded`, the document ids "Forget this document" keeps out of memory.
+
+### `.margin/embeddings.json` (cache, schemaVersion 1)
+
+`model` and `items`: paragraph id → `[textHash, vector]`. Rebuilt from the text when the embedding model changes. SPEC §4.1 names SQLite + `sqlite-vec`; a flat file and a brute-force cosine scan are as fast at book scale and need no native extension.
+
+### `memory-config.json` (app config folder, schemaVersion 1)
+
+Per machine: `indexing`, `settleSeconds` (a scene must be unchanged this long before it is read), `flagConflicts`, `embeddingEnabled`, `embeddingBinary`, `embeddingModel` (a GGUF file the author downloads), `embeddingPort` (8082), `embeddingAutoStart`.
+
+### Exports
+
+Memory Inspector → Export writes into a folder the author picks: `story-memory.json` (everything above in one file; Import reads it back), `entities.csv`, `facts.csv`, `relations.csv`, `threads.csv`, `events.csv`, `scenes.csv`, `metrics.csv`, `mentions.csv`, `story-bible.md` and `relations.graphml`. Mentions are derived from the text and exist only in the CSV and the views.
 
 ## Writes
 

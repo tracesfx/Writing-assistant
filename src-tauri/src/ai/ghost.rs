@@ -54,12 +54,16 @@ pub struct GhostContext {
     pub doc_title: String,
     pub pov: Option<String>,
     pub synopsis: Option<String>,
+    /// Short cards for the bible entries named so far (SPEC §7.4 [4]).
+    pub cards: Vec<String>,
 }
 
 /// Ghost-text prompt budget (SPEC §7.4): ~8K tokens, [1–2] ≤ 800, [3] ≤ 600.
 pub const BUDGET_TOKENS: u32 = 8000;
 const PRIMER_MAX: u32 = 800;
 const NOTES_MAX: u32 = 600;
+pub const CARDS_BUDGET: u32 = 500;
+const CARDS_MAX: u32 = 700;
 /// Room for the completion and the template's own markers.
 const RESERVE_TOKENS: u32 = 600;
 /// The prefilled assistant text (`[6]`) may take at most this share of what is left.
@@ -136,9 +140,26 @@ pub fn build_prompt(ctx: &GhostContext, text_before: &str, budget: u32) -> Built
     }
     let notes = tail_within(&notes, NOTES_MAX).to_string();
 
+    // [4] Bible cards for the entries named so far: they change only when a new
+    // one is named, so the prompt cache survives typing.
+    let cards = if ctx.cards.is_empty() {
+        String::new()
+    } else {
+        let mut c = String::from("Story bible (facts about people and places in this scene):");
+        for card in &ctx.cards {
+            c.push_str("\n- ");
+            c.push_str(card);
+        }
+        tail_within(&c, CARDS_MAX).to_string()
+    };
+
     // [5] Earlier scene text and [6] the prefilled assistant turn.
     let paragraphs: Vec<&str> = text_before.split("\n\n").collect();
-    let fixed = estimate_tokens(&role) + estimate_tokens(&primer) + estimate_tokens(&notes) + 40;
+    let fixed = estimate_tokens(&role)
+        + estimate_tokens(&primer)
+        + estimate_tokens(&notes)
+        + estimate_tokens(&cards)
+        + 40;
     let room = budget.saturating_sub(fixed + RESERVE_TOKENS).max(200);
 
     let split = paragraphs.len().saturating_sub(2);
@@ -171,7 +192,11 @@ pub fn build_prompt(ctx: &GhostContext, text_before: &str, budget: u32) -> Built
     } else {
         format!("The scene so far:\n\n{earlier}")
     };
-    let user = format!("{notes}\n\n{scene_text}");
+    let user = if cards.is_empty() {
+        format!("{notes}\n\n{scene_text}")
+    } else {
+        format!("{notes}\n\n{cards}\n\n{scene_text}")
+    };
     let system = format!("{role}\n\n{primer}");
 
     let section = |label: &str, text: &str| PromptSection {
@@ -184,13 +209,19 @@ pub fn build_prompt(ctx: &GhostContext, text_before: &str, budget: u32) -> Built
             system,
             user,
             assistant_prefix: assistant_prefix.clone(),
-            sections: vec![
-                section("[1] Role instructions", &role),
-                section("[2] Project primer", &primer),
-                section("[3] Scene notes", &notes),
-                section("[5] Scene text", &scene_text),
-                section("[6] Assistant prefill", &assistant_prefix),
-            ],
+            sections: {
+                let mut s = vec![
+                    section("[1] Role instructions", &role),
+                    section("[2] Project primer", &primer),
+                    section("[3] Scene notes", &notes),
+                ];
+                if !cards.is_empty() {
+                    s.push(section("[4] Bible cards", &cards));
+                }
+                s.push(section("[5] Scene text", &scene_text));
+                s.push(section("[6] Assistant prefill", &assistant_prefix));
+                s
+            },
         },
         before: text_before.to_string(),
     }
@@ -601,6 +632,7 @@ mod tests {
             doc_title: "The ferry".into(),
             pov: Some("Mara".into()),
             synopsis: Some("Mara misses the last ferry.".into()),
+            cards: vec![],
         }
     }
 

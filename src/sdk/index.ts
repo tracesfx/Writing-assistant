@@ -4,12 +4,25 @@
  * Versioned: breaking changes bump the major part of `sdkVersion` and need a
  * migration note in `docs/sdk.md`. Pre-1.0 while M1–M5 shape it.
  */
-export const sdkVersion = "0.4.0";
+export const sdkVersion = "0.5.0";
 
 export * from "./extensions";
 export { story, StoryError, type Story } from "./story";
 export { ai, type GhostClient } from "./ai";
 export { aiSession, useAiSession } from "./aiSession";
+export {
+  memory,
+  openSource,
+  useMemoryStatus,
+  useMemoryVersion,
+  BIBLE_ENTRY_VIEW,
+  BIBLE_PANEL,
+  CONTEXT_VIEW,
+  MARGIN_PANEL,
+  MEMORY_INSPECTOR_VIEW,
+  type PassagePointer,
+} from "./memory";
+export { setMarginTabs, useMarginTabs, type RegisteredMarginTab } from "./marginTabs";
 export { events, type EventType, type EventOf } from "./events";
 export {
   useWorkbench,
@@ -36,6 +49,7 @@ export {
 export { uiState, useUiState } from "./uiState";
 export { editorHost, type EditorHandleApi, type TextTarget } from "./editorHost";
 export { newId } from "./ids";
+export type * from "./bindings";
 export type {
   AiConfig,
   AiStatus,
