@@ -42,6 +42,8 @@ const NOT_NAMES: &[&str] = &[
 ];
 
 pub struct MergeOptions {
+    /// Ids of the extractors that were asked for in this reading.
+    pub extractors: Vec<String>,
     pub flag_conflicts: bool,
     pub project_type_fiction: bool,
 }
@@ -375,6 +377,22 @@ pub fn apply_scene(
     );
     metrics.insert("dialogueRatio".into(), dialogue_ratio(&scene_text));
     metrics.insert("entityCount".into(), present.len() as f64);
+    // Extractor values: the mean over the windows that reported one.
+    for x in super::extract::EXTRACTORS
+        .iter()
+        .filter(|x| opts.extractors.iter().any(|w| w == x.id))
+    {
+        let vals: Vec<f64> = exts
+            .iter()
+            .filter_map(|e| e.metrics.get(x.metric_key).copied())
+            .collect();
+        if !vals.is_empty() {
+            metrics.insert(
+                x.metric_key.into(),
+                (vals.iter().sum::<f64>() / vals.len() as f64 * 10.0).round() / 10.0,
+            );
+        }
+    }
     store.scenes.insert(
         scene.to_string(),
         SceneCard {
@@ -388,6 +406,7 @@ pub fn apply_scene(
             entities_present: present,
             threads_touched: thread_ids,
             metrics,
+            extractors: opts.extractors.clone(),
             source_hash: text_hash.to_string(),
             indexed_at: now(),
             created_by: Author::Ai,
@@ -446,6 +465,7 @@ mod tests {
 
     fn opts() -> MergeOptions {
         MergeOptions {
+            extractors: vec![],
             flag_conflicts: false,
             project_type_fiction: true,
         }
@@ -532,6 +552,7 @@ mod tests {
                 title: "Why the harbour is closed".into(),
                 status: "open".into(),
             }],
+            metrics: Default::default(),
         }
     }
 

@@ -149,6 +149,7 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             m::mentions_by_entity,
             m::mentions_matrix,
             m::timeline_events,
+            m::event_set_order,
             m::threads_list,
             m::scene_cards,
             m::metrics_series,
@@ -166,6 +167,7 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             m::ask_book,
             m::phrasing_generate,
             m::memory_export,
+            m::insight_export,
             m::memory_import,
         ])
         .events(collect_events![MarginEvent])

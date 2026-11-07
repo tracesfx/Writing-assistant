@@ -123,3 +123,38 @@ export function flattenTree(tree: BinderTree | null, includeTrash = false): Flat
   if (includeTrash) walk(tree.trash.map((t) => t.node), "trash", 0, []);
   return out;
 }
+
+export interface ChapterGroup {
+  /** The chapter's id (or the part's, or the scene's own when it sits at the top). */
+  id: string;
+  title: string;
+  /** Position among the groups, in binder order. */
+  order: number;
+}
+
+/**
+ * Which chapter each manuscript document belongs to: its nearest enclosing
+ * chapter, else its part, else itself. For the Insights views that roll scenes
+ * up into chapters.
+ */
+export function chapterGroups(tree: BinderTree | null): Map<string, ChapterGroup> {
+  const out = new Map<string, ChapterGroup>();
+  const groups = new Map<string, ChapterGroup>();
+  const group = (n: BinderNode): ChapterGroup => {
+    let g = groups.get(n.id);
+    if (!g) {
+      g = { id: n.id, title: n.title, order: groups.size };
+      groups.set(n.id, g);
+    }
+    return g;
+  };
+  const walk = (nodes: BinderNode[], owner: BinderNode | null) => {
+    for (const n of nodes) {
+      out.set(n.id, group(n.kind === "chapter" ? n : (owner ?? n)));
+      walk(n.children, n.kind === "chapter" || n.kind === "part" ? n : owner);
+    }
+  };
+  const ms = tree?.sections.find((s) => s.section === "manuscript");
+  if (ms) walk(ms.nodes, null);
+  return out;
+}

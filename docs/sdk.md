@@ -1,6 +1,6 @@
 # `@margin/sdk`
 
-The only API that modules use (SPEC §5). `sdkVersion` is `0.5.0`. It stays pre-1.0 while milestones M1–M5 shape it; breaking changes are listed at the end of this file.
+The only API that modules use (SPEC §5). `sdkVersion` is `0.6.0`. It stays pre-1.0 while milestones M1–M5 shape it; breaking changes are listed at the end of this file.
 
 ## Modules
 
@@ -25,7 +25,7 @@ export default defineModule({
 });
 ```
 
-Register it in `src/modules/index.ts`. Modules import only from `@margin/sdk` (plus shared libraries such as `src/editor/`), never from another module or from `src/app/`.
+It is found automatically: `src/modules/index.ts` loads every `src/modules/*/module.ts` (`import.meta.glob`), so a new module is a new folder and nothing else. Modules import only from `@margin/sdk` (plus shared libraries such as `src/editor/`), never from another module or from `src/app/`.
 
 ### Extension points
 
@@ -36,7 +36,10 @@ Register it in `src/modules/index.ts`. Modules import only from `@margin/sdk` (p
 | `commands` | live | `{ id, title, category?, keybinding?, when?(), allowDefault?, run(ctx) }` |
 | `statusBarItems` | live | `{ id, align: "left" \| "right", order?, component }` |
 | `settingsPages` | live | `{ id, title, component }`; a page in Settings after the built-in ones (e.g. Backups, Goals) |
-| `marginTabs`, `inspectorSections`, `aiTasks`, `memoryExtractors`, `exporters`, `bibleTypes` | placeholder | Shapes are finalised by the milestone that adds their first consumer |
+| `marginTabs` | live | `{ id, title, order?, component(props: { active }) }`; a tab in the Margin panel |
+| `insightsViews` | live | `{ id, title, description?, order?, component(props: { active }) }`; a view in the Insights workspace (see Insights below) |
+| `memoryExtractors` | live | `{ id, metricKey, title, max, settingKey? }`; declares a per-scene metric the model reports (see Insights below). The extractor itself is Rust |
+| `inspectorSections`, `aiTasks`, `exporters`, `bibleTypes` | placeholder | Shapes are finalised by the milestone that adds their first consumer |
 
 Every contribution is rendered inside an error boundary, so a failing module never takes down the editor. A module turned off in Settings → Modules loses its panels, views, commands and status items, and its `activate()` cleanup runs.
 
@@ -188,10 +191,31 @@ Events: `memory.updated { entityIds, sceneIds, kinds }` and `index.progress { st
 
 `marginTabs: [{ id, title, order?, component }]` adds a tab to the Margin panel. The component gets `{ active }`. Ideas, Ask my book and Phrasing are the first consumers. `useMarginTabs()` is for the panel itself.
 
+## Insights — `insightsViews`, `useInsightsData`, `Chart`, `ExportBar`
+
+The Insights workspace (`INSIGHTS_VIEW`, a module of its own) lists every `insightsViews` contribution. Each reference view is a separate module (`src/modules/insights-*`); `docs/hello-view/` is the smallest possible one.
+
+```ts
+useInsightsData(load, active, requestKey?)   // { data, error, loading }: loads while `active`, again on memory.updated / binder.changed / stats.updated (batched 250 ms)
+openInsight(viewId)                          // open the workspace on a view (commands use it)
+useInsightsViews() / useMemoryExtractors()   // what modules contributed (for the workspace itself and for metric pickers)
+<Chart option label onClick? exportRef? height?/>   // Apache ECharts canvas: lazy-loaded, themed from the CSS variables, re-themed live
+<ExportBar name csv chart? />                // CSV, PNG and SVG into a folder the author picks (native picker; never overwrites)
+toCsv(header, rows) / exportName(base, ext) / saveInsightFile(name, data)
+InsightHeader, InsightPanel, InsightEmpty, InsightError      // layout and the "nothing here yet" notice
+chapterGroups(tree)                          // sceneId → its chapter (else part, else itself), for rolling scenes up
+heatLevels(values) / heatPieces(colors, cuts) / CATEGORY_COLORS / useChartColors()
+memory.timeline.setOrder(eventId, order|null)   // the author places an event in story order; the event becomes canon
+```
+
+A view reads only through the SDK, draws only while `active`, and links every item to its passage or entry (`openSource`, `workbench.openDocument`, `workbench.openView(BIBLE_ENTRY_VIEW, id)`).
+
+**`memoryExtractors`.** An extractor adds a metric to every scene the model reads (the first is `tension`, 0–10). The extractor is Rust, registered in `memory::extract::EXTRACTORS` (id, metric key, schema key, range, one line of instruction); its value appears in `memory.metrics.series(key)` and the scene card. The module's `memoryExtractors` entry only declares the metric, so views can offer it (the Structure overview's "Line" menu). `settingKey` names the `MemoryConfig` flag that switches it on (`extractTension`).
+
 ## Lifecycle — `lifecycle`
 
 `lifecycle.onBeforeClose(async () => …)` registers work that must finish before the window closes or the project switches, such as flushing unsaved text.
 
 ## Breaking changes
 
-None yet. 0.5.0 only added the Story Memory client (`memory`, `openSource`, the memory hooks and events), the concrete `marginTabs` extension point, and `textBeforeCursor` / `selectionContext` on editor handles. 0.4.0 only added the ghost-text and provenance APIs above (`ai.ghost`, `ai.status`, `ai.isReady`, `story.provenance`, `aiSession`, the `ai.ghost` and `ai.provenanceChanged` events, and the ghost-text and Flow-mode settings). 0.3.0 only added the `ai` client and the `ai.*` events. 0.2.0 only added APIs (settings, uiState, editorHost, prompt, right sidebar, `activate()`, notice keys, and the Story calls above).
+None yet. 0.6.0 only added the Insights extension point and client (`insightsViews`, `memoryExtractors`, `useInsightsData`, `Chart`, `ExportBar`, the export helpers, `chapterGroups`), `memory.timeline.setOrder`, and the discovery of module folders by `import.meta.glob`. 0.5.0 only added the Story Memory client (`memory`, `openSource`, the memory hooks and events), the concrete `marginTabs` extension point, and `textBeforeCursor` / `selectionContext` on editor handles. 0.4.0 only added the ghost-text and provenance APIs above (`ai.ghost`, `ai.status`, `ai.isReady`, `story.provenance`, `aiSession`, the `ai.ghost` and `ai.provenanceChanged` events, and the ghost-text and Flow-mode settings). 0.3.0 only added the `ai` client and the `ai.*` events. 0.2.0 only added APIs (settings, uiState, editorHost, prompt, right sidebar, `activate()`, notice keys, and the Story calls above).

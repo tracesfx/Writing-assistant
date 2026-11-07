@@ -34,7 +34,8 @@ fn extraction_json() -> String {
         ],
         "relations": [{"from": "Jon", "to": "Mara Voss", "type": "sibling", "para": 1, "quote": "Her brother Jon"}],
         "events": [{"title": "Mara arrives at Kessel", "storyTime": "evening", "entities": ["Mara Voss"], "para": 1}],
-        "threads": [{"title": "Why the harbour is closed", "status": "open"}]
+        "threads": [{"title": "Why the harbour is closed", "status": "open"}],
+        "metrics": {"tension": 6}
     })
     .to_string()
 }
@@ -48,7 +49,8 @@ fn extraction_two_json() -> String {
             {"name": "Orrin Pike", "type": "character", "aliases": []}
         ],
         "facts": [{"entity": "Orrin Pike", "field": "occupation", "text": "Orrin Pike is a customs clerk.", "para": 2, "quote": "a clerk named Orrin Pike"}],
-        "relations": [], "events": [], "threads": []
+        "relations": [], "events": [], "threads": [],
+        "metrics": {"tension": 3}
     })
     .to_string()
 }
@@ -819,4 +821,109 @@ async fn embeddings_feed_passage_search_when_the_server_is_up() {
         2,
         "only the query this time"
     );
+}
+
+#[tokio::test]
+async fn tension_is_read_with_the_scene_and_switching_it_on_rereads_cards() {
+    // SPEC §16 M5: a `memoryExtractors` entry feeds the Structure view's metric line.
+    let r = rig().await;
+    r.index_all().await;
+    let cards = r.mem.scene_cards().unwrap();
+    assert_eq!(cards[0].card.metrics["tension"], 6.0);
+    assert_eq!(cards[1].card.metrics["tension"], 3.0);
+    assert!(cards.iter().all(|c| c.card.extractors == ["tension"]));
+    let series = r.mem.metrics_series("tension").unwrap();
+    assert_eq!(series.len(), 2);
+    assert_eq!(series[0].value, 6.0);
+    // Up to date: nothing waits to be read.
+    assert_eq!(r.mem.status().pending, 0);
+
+    // Switched off: cards stay, nothing is re-read. Back on: they are current already.
+    let mut cfg = r.mem.config();
+    cfg.extract_tension = false;
+    r.mem.set_config(cfg.clone()).unwrap();
+    assert_eq!(r.mem.status().pending, 0);
+
+    // A card made while it was off waits to be read once it is on.
+    r.mem.rebuild_all().unwrap();
+    r.index_all().await;
+    let cards = r.mem.scene_cards().unwrap();
+    assert!(
+        cards
+            .iter()
+            .all(|c| !c.card.metrics.contains_key("tension"))
+    );
+    assert_eq!(r.mem.status().pending, 0);
+    cfg.extract_tension = true;
+    r.mem.set_config(cfg).unwrap();
+    assert_eq!(r.mem.status().pending, 2);
+    r.index_all().await;
+    let cards = r.mem.scene_cards().unwrap();
+    assert!(cards.iter().all(|c| c.card.metrics.contains_key("tension")));
+}
+
+#[tokio::test]
+async fn the_author_places_an_event_in_story_order_and_it_becomes_canon() {
+    let r = rig().await;
+    r.index_all().await;
+    let ev = r.mem.timeline_events().unwrap().remove(0).event;
+    assert_eq!(ev.status, Status::Inferred);
+    assert_eq!(ev.story_time.as_ref().unwrap().label, "evening");
+    r.mem.set_event_order(&ev.id, Some(2.5)).unwrap();
+    let got = r.mem.timeline_events().unwrap().remove(0).event;
+    assert_eq!(got.status, Status::Canon);
+    let st = got.story_time.unwrap();
+    assert_eq!((st.label.as_str(), st.order), ("evening", Some(2.5)));
+    // Reading the scene again leaves the author's event alone (no inferred copy replaces it).
+    r.mem.reindex_scene(&r.s1).await.unwrap();
+    r.index_all().await;
+    let evs = r.mem.timeline_events().unwrap();
+    let mine: Vec<_> = evs.iter().filter(|e| e.event.id == ev.id).collect();
+    assert_eq!(mine.len(), 1);
+    assert_eq!(mine[0].event.story_time.as_ref().unwrap().order, Some(2.5));
+    // Clearing the position keeps the label.
+    r.mem.set_event_order(&ev.id, None).unwrap();
+    let st = r
+        .mem
+        .timeline_events()
+        .unwrap()
+        .into_iter()
+        .find(|e| e.event.id == ev.id)
+        .unwrap()
+        .event
+        .story_time
+        .unwrap();
+    assert_eq!((st.label.as_str(), st.order), ("evening", None));
+    assert!(r.mem.set_event_order(&ev.id, Some(f64::NAN)).is_err());
+    assert!(r.mem.set_event_order("nope", Some(1.0)).is_err());
+}
+
+#[tokio::test]
+async fn the_authors_story_position_shows_in_the_inspector_and_the_events_csv() {
+    // SPEC §2.8: every field the model tracks is inspectable and exported.
+    let r = rig().await;
+    r.index_all().await;
+    let ev = r.mem.timeline_events().unwrap().remove(0).event;
+    r.mem.set_event_order(&ev.id, Some(2.5)).unwrap();
+    let row = r
+        .mem
+        .inspector_rows()
+        .unwrap()
+        .into_iter()
+        .find(|x| x.kind == "event" && x.id == ev.id)
+        .unwrap();
+    assert_eq!(row.detail, "evening (story position 2.5)");
+    let out = r.dir.path().join("export-order");
+    r.mem.export(&out, ExportFormat::Csv).unwrap();
+    let csv = std::fs::read_to_string(out.join("events.csv")).unwrap();
+    assert!(
+        csv.lines()
+            .next()
+            .unwrap()
+            .contains("story_time,story_order,scene")
+    );
+    assert!(csv.contains("evening,2.5,"));
+    // The JSON export carries the number too.
+    let json = serde_json::to_string(&r.mem.export_data().unwrap()).unwrap();
+    assert!(json.contains("\"order\":2.5"));
 }

@@ -59,6 +59,40 @@ pub const RELATION_KINDS: &[&str] = &[
     "owns",
 ];
 
+/// An optional per-scene measurement the reading also reports (SPEC §5.3
+/// `memoryExtractors`). Its value lands in the scene card's `metrics` under
+/// `metric_key`, ready for charts. Adding one is one entry here: the schema,
+/// the prompt, the parser and the dirty check all follow the list.
+pub struct Extractor {
+    pub id: &'static str,
+    pub metric_key: &'static str,
+    /// Key inside `g_metrics` (letter-prefixed, see `schema`).
+    pub schema_key: &'static str,
+    pub max: u8,
+    /// One line for the extraction rules.
+    pub rule: &'static str,
+}
+
+/// How tense the scene is for the reader, 0–10 (SPEC §10 Structure overview).
+pub const TENSION: Extractor = Extractor {
+    id: "tension",
+    metric_key: "tension",
+    schema_key: "a_tension",
+    max: 10,
+    rule: "a_tension: a whole number 0-10 for how tense this part is for the reader (0 calm, 3 mild unease, 5 real conflict or worry, 8 danger or a crisis, 10 life or death).",
+};
+
+pub const EXTRACTORS: &[&Extractor] = &[&TENSION];
+
+/// The extractors the author has switched on.
+pub fn enabled(tension: bool) -> Vec<&'static Extractor> {
+    EXTRACTORS
+        .iter()
+        .copied()
+        .filter(|x| x.id != "tension" || tension)
+        .collect()
+}
+
 /// The JSON schema for one extraction call.
 ///
 /// llama.cpp turns it into a grammar that writes object keys in **alphabetical**
@@ -66,9 +100,9 @@ pub const RELATION_KINDS: &[&str] = &[
 /// (`a_`, `b_`, …) so the order they come out in is the order we want: the
 /// summary and the cast first, and the least important parts last, in case a long
 /// answer is cut off at the token limit.
-pub fn schema(pt: ProjectType) -> String {
+pub fn schema(pt: ProjectType, extractors: &[&Extractor]) -> String {
     let types = entity_types(pt);
-    let s = json!({
+    let mut s = json!({
         "type": "object",
         "properties": {
             "a_scene": {"type": "object", "properties": {
@@ -130,11 +164,36 @@ pub fn schema(pt: ProjectType) -> String {
         },
         "required": ["a_scene", "b_entities", "c_facts", "d_relations", "e_events", "f_threads"]
     });
+    if !extractors.is_empty() {
+        let props: serde_json::Map<String, Value> = extractors
+            .iter()
+            .map(|x| {
+                (
+                    x.schema_key.to_string(),
+                    json!({"type": "integer", "minimum": 0, "maximum": x.max}),
+                )
+            })
+            .collect();
+        let required: Vec<&str> = extractors.iter().map(|x| x.schema_key).collect();
+        s["properties"]["g_metrics"] =
+            json!({"type": "object", "properties": props, "required": required});
+        s["required"] = json!([
+            "a_scene",
+            "b_entities",
+            "c_facts",
+            "d_relations",
+            "e_events",
+            "f_threads",
+            "g_metrics"
+        ]);
+    }
     s.to_string()
 }
 
 /// What the prompt builder knows about the scene.
 pub struct SceneInfo<'a> {
+    /// Extra measurements to report (`tension`).
+    pub extractors: &'a [&'static Extractor],
     pub project_title: &'a str,
     pub project_type: ProjectType,
     pub title: &'a str,
@@ -217,6 +276,30 @@ pub fn build_prompt(info: &SceneInfo, paras: &[Para], window: std::ops::Range<us
         String::new()
     };
     let kinds = RELATION_KINDS.join(", ");
+    let metric_rules = if info.extractors.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "- g_metrics: {}\n",
+            info.extractors
+                .iter()
+                .map(|x| x.rule)
+                .collect::<Vec<_>>()
+                .join(" ")
+        )
+    };
+    let metric_example = if info.extractors.is_empty() {
+        String::new()
+    } else {
+        format!(
+            ",\"g_metrics\":{{{}}}",
+            info.extractors
+                .iter()
+                .map(|x| format!("\"{}\":2", x.schema_key))
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    };
     let rules = format!(
         "Report what this text states, as JSON with these keys, in this order:\n\
 - a_scene: a_summary (one to three sentences on what happens), b_pov, c_tense, d_location, e_when (when the scene is set, such as \"that night\"). Use \"\" for what is unclear.\n\
@@ -225,9 +308,10 @@ pub fn build_prompt(info: &SceneInfo, paras: &[Para], window: std::ops::Range<us
 - d_relations: how two named entities relate, with b_kind from: {kinds}. \"parent\" means a_from is the parent of c_to. Add d_para and e_quote.\n\
 - e_events: things that happen and matter to the plot, with d_para.\n\
 - f_threads: questions, promises or mysteries the text sets up or settles. b_status is open, resolved or dropped.\n\
+{metric_rules}\
 Report only what the text says. Do not guess. Empty lists are fine.\n\n\
 Example. Text: [1] Tom Hale, the ferryman, rubbed his grey beard. His sister Ann laughed. [2] \"Not today,\" said Ann Hale.\n\
-Answer: {{\"a_scene\":{{\"a_summary\":\"Tom and his sister Ann talk at the ferry.\",\"b_pov\":\"\",\"c_tense\":\"past\",\"d_location\":\"the ferry\",\"e_when\":\"\"}},\"b_entities\":[{{\"a_name\":\"Tom Hale\",\"b_type\":\"character\",\"c_aliases\":[]}},{{\"a_name\":\"Ann Hale\",\"b_type\":\"character\",\"c_aliases\":[\"Ann\"]}}],\"c_facts\":[{{\"a_entity\":\"Tom Hale\",\"b_fact\":\"Tom Hale is a ferryman with a grey beard.\",\"c_field\":\"occupation\",\"d_para\":1,\"e_quote\":\"Tom Hale, the ferryman\"}}],\"d_relations\":[{{\"a_from\":\"Ann Hale\",\"b_kind\":\"sibling\",\"c_to\":\"Tom Hale\",\"d_para\":1,\"e_quote\":\"His sister Ann\"}}],\"e_events\":[],\"f_threads\":[]}}"
+Answer: {{\"a_scene\":{{\"a_summary\":\"Tom and his sister Ann talk at the ferry.\",\"b_pov\":\"\",\"c_tense\":\"past\",\"d_location\":\"the ferry\",\"e_when\":\"\"}},\"b_entities\":[{{\"a_name\":\"Tom Hale\",\"b_type\":\"character\",\"c_aliases\":[]}},{{\"a_name\":\"Ann Hale\",\"b_type\":\"character\",\"c_aliases\":[\"Ann\"]}}],\"c_facts\":[{{\"a_entity\":\"Tom Hale\",\"b_fact\":\"Tom Hale is a ferryman with a grey beard.\",\"c_field\":\"occupation\",\"d_para\":1,\"e_quote\":\"Tom Hale, the ferryman\"}}],\"d_relations\":[{{\"a_from\":\"Ann Hale\",\"b_kind\":\"sibling\",\"c_to\":\"Tom Hale\",\"d_para\":1,\"e_quote\":\"His sister Ann\"}}],\"e_events\":[],\"f_threads\":[]{metric_example}}}"
     );
     let user = format!("{notes}{part}\n\n{known_section}\n\nParagraphs:\n\n{text}\n\n{rules}");
     let section = |label: &str, t: &str| PromptSection {
@@ -303,6 +387,8 @@ pub struct Extraction {
     pub relations: Vec<XRelation>,
     pub events: Vec<XEvent>,
     pub threads: Vec<XThread>,
+    /// Extractor values by metric key (`tension`), from 0 to the extractor's max.
+    pub metrics: std::collections::BTreeMap<String, f64>,
 }
 
 /// Parse JSON, repairing an answer that was cut off at the token limit by
@@ -456,6 +542,17 @@ pub fn parse_output(text: &str) -> Option<Extraction> {
             })
             .filter(|t| !t.title.is_empty())
             .collect(),
+        metrics: EXTRACTORS
+            .iter()
+            .filter_map(|x| {
+                let m = get(&v, &["g_metrics", "metrics"])?;
+                let raw = get(m, &[x.schema_key, x.metric_key])?;
+                let val = raw
+                    .as_f64()
+                    .or_else(|| raw.as_str().and_then(|s| s.trim().parse::<f64>().ok()))?;
+                Some((x.metric_key.to_string(), val.clamp(0.0, f64::from(x.max))))
+            })
+            .collect(),
     })
 }
 
@@ -481,6 +578,7 @@ mod tests {
         let p = paras(&["Mara came ashore.", "Jon waited."]);
         let known = vec![("Mara Voss".to_string(), "character".to_string())];
         let info = SceneInfo {
+            extractors: &[],
             project_title: "The Salt Road",
             project_type: ProjectType::Fiction,
             title: "Arrival",
@@ -503,6 +601,7 @@ mod tests {
         let w = windows(&p);
         assert_eq!(w, vec![0..1, 1..2, 2..3]);
         let info = SceneInfo {
+            extractors: &[],
             project_title: "T",
             project_type: ProjectType::Fiction,
             title: "S",
@@ -519,10 +618,10 @@ mod tests {
 
     #[test]
     fn the_schema_is_valid_json_with_the_projects_entity_types() {
-        let v: Value = serde_json::from_str(&schema(ProjectType::Fiction)).unwrap();
+        let v: Value = serde_json::from_str(&schema(ProjectType::Fiction, &[])).unwrap();
         let types = &v["properties"]["b_entities"]["items"]["properties"]["b_type"]["enum"];
         assert!(types.as_array().unwrap().iter().any(|t| t == "character"));
-        let v: Value = serde_json::from_str(&schema(ProjectType::NonFiction)).unwrap();
+        let v: Value = serde_json::from_str(&schema(ProjectType::NonFiction, &[])).unwrap();
         let types = &v["properties"]["b_entities"]["items"]["properties"]["b_type"]["enum"];
         assert!(types.as_array().unwrap().iter().any(|t| t == "concept"));
     }
@@ -546,7 +645,7 @@ mod tests {
                 check(items, &format!("{path}[]"));
             }
         }
-        let v: Value = serde_json::from_str(&schema(ProjectType::Fiction)).unwrap();
+        let v: Value = serde_json::from_str(&schema(ProjectType::Fiction, &[])).unwrap();
         check(&v, "$");
         // The summary comes first, so a long answer cut off at the limit still has it.
         let scene = &v["properties"]["a_scene"]["properties"];
@@ -557,6 +656,7 @@ mod tests {
     fn the_prompt_teaches_the_format_with_an_example() {
         let p = paras(&["Mara came ashore."]);
         let info = SceneInfo {
+            extractors: &[],
             project_title: "T",
             project_type: ProjectType::Fiction,
             title: "S",
@@ -637,5 +737,60 @@ mod tests {
         assert!(parse_output("").is_none());
         // Text around the JSON is tolerated.
         assert!(parse_output("Sure! {\"summary\":\"x\"} done").is_some());
+    }
+}
+
+#[cfg(test)]
+mod extractor_tests {
+    use super::*;
+
+    #[test]
+    fn tension_adds_a_required_last_key_to_the_schema_and_the_prompt() {
+        let on = enabled(true);
+        assert_eq!(on.len(), 1);
+        let v: Value = serde_json::from_str(&schema(ProjectType::Fiction, &on)).unwrap();
+        let m = &v["properties"]["g_metrics"];
+        assert_eq!(m["properties"]["a_tension"]["maximum"], 10);
+        assert!(
+            v["required"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|k| *k == "g_metrics")
+        );
+        // Off: the schema is the plain one.
+        assert!(enabled(false).is_empty());
+        let v: Value = serde_json::from_str(&schema(ProjectType::Fiction, &[])).unwrap();
+        assert!(v["properties"].get("g_metrics").is_none());
+
+        let p = Para {
+            id: "P1".into(),
+            block: 0,
+            hash: String::new(),
+            text: "Mara ran.".into(),
+        };
+        let info = SceneInfo {
+            extractors: &on,
+            project_title: "T",
+            project_type: ProjectType::Fiction,
+            title: "S",
+            pov: None,
+            known: &[],
+        };
+        let prompt = build_prompt(&info, &[p], 0..1);
+        assert!(prompt.user.contains("a_tension"));
+        assert!(prompt.user.contains("\"g_metrics\":{\"a_tension\":2}"));
+    }
+
+    #[test]
+    fn tension_is_read_clamped_and_optional() {
+        let x =
+            parse_output(r#"{"a_scene":{"a_summary":"x"},"g_metrics":{"a_tension":7}}"#).unwrap();
+        assert_eq!(x.metrics["tension"], 7.0);
+        let x = parse_output(r#"{"a_scene":{"a_summary":"x"},"g_metrics":{"a_tension":"99"}}"#)
+            .unwrap();
+        assert_eq!(x.metrics["tension"], 10.0);
+        let x = parse_output(r#"{"a_scene":{"a_summary":"x"}}"#).unwrap();
+        assert!(x.metrics.is_empty());
     }
 }

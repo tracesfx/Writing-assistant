@@ -135,6 +135,7 @@ export const commands = {
 	mentionsByEntity: (id: string) => typedError<MentionRow[], MarginError>(__TAURI_INVOKE("mentions_by_entity", { id })),
 	mentionsMatrix: (types: string[]) => typedError<MentionMatrix, MarginError>(__TAURI_INVOKE("mentions_matrix", { types })),
 	timelineEvents: () => typedError<EventView[], MarginError>(__TAURI_INVOKE("timeline_events")),
+	eventSetOrder: (id: string, order: number | null) => typedError<null, MarginError>(__TAURI_INVOKE("event_set_order", { id, order })),
 	threadsList: (status: ThreadStatus | null) => typedError<ThreadView[], MarginError>(__TAURI_INVOKE("threads_list", { status })),
 	sceneCards: () => typedError<SceneCardView[], MarginError>(__TAURI_INVOKE("scene_cards")),
 	metricsSeries: (key: string) => typedError<MetricPoint[], MarginError>(__TAURI_INVOKE("metrics_series", { key })),
@@ -152,6 +153,7 @@ export const commands = {
 	askBook: (question: string) => typedError<AskAnswer, MarginError>(__TAURI_INVOKE("ask_book", { question })),
 	phrasingGenerate: (request: PhrasingRequest) => typedError<PhrasingResult, MarginError>(__TAURI_INVOKE("phrasing_generate", { request })),
 	memoryExport: (dir: string, format: ExportFormat) => typedError<string[], MarginError>(__TAURI_INVOKE("memory_export", { dir, format })),
+	insightExport: (dir: string, name: string, data: number[]) => typedError<string, MarginError>(__TAURI_INVOKE("insight_export", { dir, name, data })),
 	memoryImport: (path: string) => typedError<number, MarginError>(__TAURI_INVOKE("memory_import", { path })),
 };
 
@@ -797,6 +799,8 @@ export type MemoryConfig = {
 	embeddingPort: number,
 	/**  Start the embedding server when a project opens. */
 	embeddingAutoStart: boolean,
+	/**  Also rate each scene's tension, 0-10, while reading it (SPEC §10 Structure overview). */
+	extractTension?: boolean,
 };
 
 export type MemoryStatus = {
@@ -1135,6 +1139,11 @@ export type SceneCard = {
 	entitiesPresent: string[],
 	threadsTouched: string[],
 	metrics: { [key in string]: number | null },
+	/**
+	 *  Extractors this reading asked for (`tension`), so a card the model could
+	 *  not answer is not read again for ever.
+	 */
+	extractors?: string[],
 	/**  Hash of the scene text this card was made from (dirty detection). */
 	sourceHash: string,
 	indexedAt: string,

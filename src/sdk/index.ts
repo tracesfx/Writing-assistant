@@ -4,7 +4,7 @@
  * Versioned: breaking changes bump the major part of `sdkVersion` and need a
  * migration note in `docs/sdk.md`. Pre-1.0 while M1–M5 shape it.
  */
-export const sdkVersion = "0.5.0";
+export const sdkVersion = "0.6.0";
 
 export * from "./extensions";
 export { story, StoryError, type Story } from "./story";
@@ -23,6 +23,33 @@ export {
   type PassagePointer,
 } from "./memory";
 export { setMarginTabs, useMarginTabs, type RegisteredMarginTab } from "./marginTabs";
+export {
+  INSIGHTS_VIEW,
+  useInsightsStore,
+  exportName,
+  openInsight,
+  saveInsightFile,
+  setInsights,
+  toCsv,
+  useInsightsData,
+  useInsightsViews,
+  useMemoryExtractors,
+  type InsightsData,
+  type RegisteredExtractor,
+  type RegisteredInsightsView,
+} from "./insights";
+export {
+  CATEGORY_COLORS,
+  Chart,
+  ExportBar,
+  readChartColors,
+  useChartColors,
+  type ChartColors,
+  type ChartExport,
+  type ChartProps,
+  type EChartsOption,
+  type ExportBarProps,
+} from "./charts";
 export { events, type EventType, type EventOf } from "./events";
 export {
   useWorkbench,
@@ -34,7 +61,18 @@ export {
   type Notice,
   type PromptRequest,
 } from "./workbench";
-export { useProject, useBinderTree, useProjectStore, findNode, locateNode, flattenTree } from "./project";
+export {
+  useProject,
+  useBinderTree,
+  useProjectStore,
+  findNode,
+  locateNode,
+  flattenTree,
+  chapterGroups,
+  type ChapterGroup,
+} from "./project";
+export { heatLevels, heatPieces } from "./chartMath";
+export { InsightEmpty, InsightError, InsightHeader, InsightPanel } from "./insightsUi";
 export { lifecycle } from "./lifecycle";
 export {
   settings,

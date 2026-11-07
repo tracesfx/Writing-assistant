@@ -60,6 +60,10 @@ export function MemoryPage() {
         seconds
       </label>
       <label className="setting-row">
+        <input type="checkbox" checked={cfg.extractTension} onChange={(e) => void save({ extractTension: e.target.checked })} /> Rate each scene's tension, 0-10
+        (for Insights → Structure overview; turning it on reads finished scenes once more)
+      </label>
+      <label className="setting-row">
         <input type="checkbox" checked={cfg.flagConflicts} onChange={(e) => void save({ flagConflicts: e.target.checked })} /> Flag text that contradicts
         canon (shown only inside the bible entry)
       </label>

@@ -288,3 +288,43 @@ Real model (Ternary Bonsai 9B on :8080), real app, throwaway projects.
 ### Tests (M4)
 - Rust: 193 pass (58 new in `memory::`: store and canon rules, paragraph ids, extraction and merge, search, export and import, and end-to-end indexing, Ask, Ideas, Phrasing and ghost cards against the mock model), plus 3 opt-in live tests; clippy and fmt clean.
 - Vitest: 101 pass; typecheck and ESLint clean.
+
+## M5 — Insights workspace (2026-11-06)
+
+### Decisions (recorded in SPEC §1.2)
+- Insights is a workspace view with its own extension point, `insightsViews`; each of the six views is a module folder (`src/modules/insights-*`). Module folders are found with `import.meta.glob`, so a new view is one new folder. Proven by `docs/hello-view/` and a test that adds it to the registry.
+- ECharts (charts) and Cytoscape (graph) are bundled and load on first draw. Shared plumbing (themed `Chart`, `ExportBar`, `useInsightsData`, `chapterGroups`) lives in the SDK because modules may not import each other. SDK 0.6.0.
+- `tension` is the first `memoryExtractors` entry: the same extraction call also reports `g_metrics.a_tension` (0–10), stored in the scene card's `metrics`, with `extractors` on the card recording what was asked. On by default (Settings → Memory); a card made without it is read again once it is on.
+- Story order: the model gives events only a label, so the Timeline lets the author move an event earlier/later (`event_set_order`); that sets `storyTime.order` and makes the event canon. Shown in the Memory Inspector, `events.csv` and the JSON export.
+- Exports (CSV, PNG, SVG) go to a folder picked in the native picker (`insight_export`, plain file names, never overwrites). CSV cells that start with `= + - @` are defused.
+
+### Build checklist
+- [x] Writing progress: words/day, streak calendar, growth vs goal and pace, your words vs AI words per chapter
+- [x] Character presence: entries × scenes/chapters heatmap; type, search, sort, minimum filters
+- [x] Relationship graph: Cytoscape; colour by relation type, size by mentions, type filters, "as of chapter N"
+- [x] Timeline: told order vs story order, point-of-view bands, author-set story position
+- [x] Structure overview: words per chapter/scene by POV, optional metric line (dialogue, entries, tension)
+- [x] Plot threads: swimlanes, open threads highlighted
+- [x] `tension` extractor (Rust, schema/prompt/parser/dirty check), Settings toggle
+- [x] Docs: SPEC §1.2/§5.3, `docs/sdk.md`, `docs/data-format.md`, `docs/hello-view/`
+
+### Acceptance (M5) — run in the real app over CDP, 2026-11-06
+Throwaway project: the first 10 chapters of the 50k fixture (15,538 words), read by Ternary Bonsai 9B (about 40 s a chapter): 38 entries, 37 events, 23 threads, 17 relations, a tension value on every scene. 28 of 28 scripted checks passed.
+- [x] **A new view needs one module folder only.** `docs/hello-view/` added to the registry gives a seventh view and its command, with no other edit (test).
+- [x] **Every view traces to its passage in ≤ 2 clicks (check 10).** Presence cell → scene with the mention selected (1 click); graph relation → "Read the passage" → words selected (2); timeline event → passage (2); thread dot → scene (1); structure bar → that chapter's scene (1); name → bible entry (1–2).
+- [x] **Export.** Each view saved CSV, PNG and SVG; the PNG has the PNG signature, the SVGs contain the chart (the graph SVG has nodes and lines), and the CSV has a header and rows.
+- [x] **Live theme.** Switching to the dark theme re-colours open charts without reopening.
+- [x] **Tension feeds Structure.** Choosing "Tension" adds a line with values (3, 3, 5, 3, 3, 5, 3, 3, 3, 5).
+- [x] **Story order.** Moving an event later changed its Happens number and made it canon.
+- [~] **Render < 500 ms at 150k words (§14).** A synthetic project of 155,520 words, 162 scenes, 60 entries and 90 relations, first open of each view after a reload: Writing progress 6 ms (already showing), Character presence 422 ms (the matrix query is 189 ms of it), Relationship graph 271 ms (3.0 s before the layout was cut to 250 iterations), Structure 101 ms. Timeline and Plot threads were timed there only empty (65 and 115 ms): the model had not read that project. On the real 10-chapter data they took about 0.4 s including the keypresses.
+
+### Findings
+- **Cose layout took 3 s for 60 nodes**; fixed (fewer iterations, no label-size packing).
+- **Native folder pickers cannot be driven over CDP**, and `__TAURI_INTERNALS__` is read-only, so the driver answers through `window.__marginExportDir` (checked in `saveInsightFile`). The charts also keep `__marginChart`, `__marginCy` and `__marginExport` on their element for the driver.
+- A y-axis with a 0.5 offset hid the Timeline's lane labels; fixed.
+- The 9B model left point of view blank for almost every scene of *Pride and Prejudice* (omniscient narration), so Structure shows one "No point of view" series; the view is right, the data is thin. Tension values are coarse (3 and 5).
+- Timeline events all start hollow (no story position): the model gives labels only, which is why the author-placed order exists.
+
+### Tests (M5)
+- Rust: 199 pass (6 new: tension schema/prompt/parse, tension end to end and re-read, story order, inspector/CSV, export file names); clippy and fmt clean.
+- Vitest: 155 pass (54 new: a model test file per view, module discovery, Hello view, CSV/file names); typecheck and ESLint clean. `npm audit --omit=dev`: 0.

@@ -681,6 +681,34 @@ impl Store {
         }
     }
 
+    /// The author places an event in story order (SPEC §10 Timeline). `order` is on
+    /// the scale of the narrative order (1 = the first event); `None` clears it.
+    /// This is an author action, so the event becomes canon and later readings of
+    /// its scene leave it alone.
+    pub fn author_set_event_order(&mut self, id: &str, order: Option<f64>) -> Result<()> {
+        let ev = self
+            .events
+            .iter_mut()
+            .find(|e| e.id == id)
+            .ok_or_else(|| MarginError::NotFound(format!("event {id}")))?;
+        if order.is_some_and(|o| !o.is_finite()) {
+            return Err(invalid("the position must be a number"));
+        }
+        let label = ev
+            .story_time
+            .as_ref()
+            .map(|s| s.label.clone())
+            .unwrap_or_default();
+        ev.story_time = if order.is_none() && label.is_empty() {
+            None
+        } else {
+            Some(StoryTime { label, order })
+        };
+        ev.status = Status::Canon;
+        ev.updated = now();
+        self.save_timeline()
+    }
+
     /// Delete inferred records in bulk. Canon records are refused (not skipped
     /// silently): the caller learns which ones.
     pub fn delete_inferred(&mut self, items: &[ItemRef]) -> Result<u32> {

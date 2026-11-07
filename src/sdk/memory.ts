@@ -83,7 +83,11 @@ export const memory = {
     byEntity: (id: string) => unwrap(commands.mentionsByEntity(id)),
     matrix: (types: string[] = []) => unwrap(commands.mentionsMatrix(types)),
   },
-  timeline: { events: () => unwrap(commands.timelineEvents()) },
+  timeline: {
+    events: () => unwrap(commands.timelineEvents()),
+    /** Place an event in story order (an author action: the event becomes canon). `null` clears it. */
+    setOrder: (id: string, order: number | null) => unwrap(commands.eventSetOrder(id, order)),
+  },
   threads: { list: (status: ThreadStatus | null = null) => unwrap(commands.threadsList(status)) },
   scenes: { cards: () => unwrap(commands.sceneCards()) },
   metrics: { series: (key: string) => unwrap(commands.metricsSeries(key)) },

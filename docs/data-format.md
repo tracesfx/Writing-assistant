@@ -234,11 +234,11 @@ Canon rules, enforced in the Rust store (`memory::store`): the AI creates entrie
 
 ### `memory/scenes/<sceneId>.json` (schemaVersion 1)
 
-`sceneId`, `summary`, `pov`, `tense`, `location`, `storyTime` (`{ label, order }`), `entitiesPresent` (entry ids, found by name in the text, not by the model), `threadsTouched`, `metrics` (`words`, `dialogueRatio`, `entityCount` at the time of reading; a `memoryExtractors` module adds more), `sourceHash` (the hash of the scene's paragraph text at the time: the scene is dirty when it differs), `indexedAt`, `createdBy`.
+`sceneId`, `summary`, `pov`, `tense`, `location`, `storyTime` (`{ label, order }`), `entitiesPresent` (entry ids, found by name in the text, not by the model), `threadsTouched`, `metrics` (`words`, `dialogueRatio`, `entityCount` at the time of reading, plus `tension`, 0-10, while that extractor is on; a `memoryExtractors` entry adds more), `extractors` (ids of the extractors that reading asked for, e.g. `["tension"]`; omitted when empty; a card missing an extractor that is now switched on is read again), `sourceHash` (the hash of the scene's paragraph text at the time: the scene is dirty when it differs), `indexedAt`, `createdBy`.
 
 ### `memory/timeline.json`, `synopsis.json`, `chapters/<id>.json`
 
-`timeline.json`: `{ schemaVersion, events: [{ id, title, storyTime, narrativePos (a scene id), entities, source, status, createdBy, updated }] }`. A summary file has `id`, `summary`, `sourceHashes` (the card hashes it was made from; a change makes it stale) and `updated`.
+`timeline.json`: `{ schemaVersion, events: [{ id, title, storyTime (`{ label, order? }`: `order` is the author's place in story order, on the scale of narrative position; setting it makes the event canon), narrativePos (a scene id), entities, source, status, createdBy, updated }] }`. A summary file has `id`, `summary`, `sourceHashes` (the card hashes it was made from; a change makes it stale) and `updated`.
 
 ### `memory/paragraphs/<docId>.json` (schemaVersion 1)
 
@@ -254,11 +254,13 @@ Canon rules, enforced in the Rust store (`memory::store`): the AI creates entrie
 
 ### `memory-config.json` (app config folder, schemaVersion 1)
 
-Per machine: `indexing`, `settleSeconds` (a scene must be unchanged this long before it is read), `flagConflicts`, `embeddingEnabled`, `embeddingBinary`, `embeddingModel` (a GGUF file the author downloads), `embeddingPort` (8082), `embeddingAutoStart`.
+Per machine: `indexing`, `settleSeconds` (a scene must be unchanged this long before it is read), `flagConflicts`, `embeddingEnabled`, `embeddingBinary`, `embeddingModel` (a GGUF file the author downloads), `embeddingPort` (8082), `embeddingAutoStart`, `extractTension` (default true; files without it read as true).
 
 ### Exports
 
 Memory Inspector → Export writes into a folder the author picks: `story-memory.json` (everything above in one file; Import reads it back), `entities.csv`, `facts.csv`, `relations.csv`, `threads.csv`, `events.csv`, `scenes.csv`, `metrics.csv`, `mentions.csv`, `story-bible.md` and `relations.graphml`. Mentions are derived from the text and exist only in the CSV and the views.
+
+Insights views export their own data from the view: `<view>.csv` (RFC 4180, CRLF; cells that would run as a formula in a spreadsheet get a leading apostrophe), plus `<view>.png` and `<view>.svg` for the chart. The file name is a plain name with one of those three extensions, saved in a folder the author picks; an existing file gets a number instead of being overwritten.
 
 ## Writes
 

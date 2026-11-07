@@ -95,9 +95,35 @@ export interface InspectorSectionContribution {
 export interface AiTaskContribution {
   id: string;
 }
+/** A view in the Insights workspace (SPEC §10): one module folder per view. */
+export interface InsightsViewProps {
+  /** True while this view is the one showing. Fetch and draw only then. */
+  active: boolean;
+}
+
+export interface InsightsViewContribution {
+  id: string;
+  title: string;
+  /** One line under the title in the Insights list. */
+  description?: string;
+  order?: number;
+  component: ComponentType<InsightsViewProps>;
+}
+
+/**
+ * An extra measurement the model reports for every scene while it reads it
+ * (SPEC §5.3). The extractor itself is Rust (`memory::extract::EXTRACTORS`,
+ * a backend extension); this declaration tells the interface that the metric
+ * exists, so charts can offer it. `settingKey` is the `MemoryConfig` flag that
+ * switches it on.
+ */
 export interface MemoryExtractorContribution {
   id: string;
   metricKey: string;
+  title: string;
+  /** Highest value it reports; the lowest is 0. */
+  max: number;
+  settingKey?: "extractTension";
 }
 export interface ExporterContribution {
   id: string;
@@ -113,6 +139,7 @@ export interface Contributions {
   sidebarPanels?: SidebarPanelContribution[];
   marginTabs?: MarginTabContribution[];
   inspectorSections?: InspectorSectionContribution[];
+  insightsViews?: InsightsViewContribution[];
   commands?: CommandContribution[];
   statusBarItems?: StatusBarItemContribution[];
   settingsPages?: SettingsPageContribution[];

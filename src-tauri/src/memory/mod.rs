@@ -104,6 +104,18 @@ pub struct MemoryService {
     last_progress: Mutex<Option<Progress>>,
 }
 
+/// "that night" or "that night (story position 2.5)": what the Inspector and the exports show for an event.
+pub(crate) fn story_time_text(t: Option<&StoryTime>) -> String {
+    match t {
+        None => String::new(),
+        Some(t) => match t.order {
+            Some(o) if t.label.is_empty() => format!("story position {o}"),
+            Some(o) => format!("{} (story position {o})", t.label),
+            None => t.label.clone(),
+        },
+    }
+}
+
 pub(crate) fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -1016,6 +1028,12 @@ impl MemoryService {
         Ok(items.len() as u32)
     }
 
+    pub fn set_event_order(&self, id: &str, order: Option<f64>) -> Result<()> {
+        self.with_store(|s| s.author_set_event_order(id, order))?;
+        self.emit(vec![], vec![], &["events"]);
+        Ok(())
+    }
+
     pub fn delete_inferred(&self, items: &[ItemRef]) -> Result<u32> {
         let n = self.with_store(|s| s.delete_inferred(items))?;
         let ents = items
@@ -1054,7 +1072,17 @@ impl MemoryService {
 
     // --- Status ------------------------------------------------------------------
 
-    pub(crate) fn pending_docs(i: &Inner) -> Vec<String> {
+    /// Ids of the extractors the author has on.
+    pub(crate) fn wanted_extractors(&self) -> Vec<&'static str> {
+        extract::enabled(self.config().extract_tension)
+            .iter()
+            .map(|x| x.id)
+            .collect()
+    }
+
+    /// Scenes whose card is missing or out of date: the text changed, or an
+    /// extractor was switched on since the card was made.
+    pub(crate) fn pending_docs(i: &Inner, want: &[&str]) -> Vec<String> {
         let Some(store) = &i.store else { return vec![] };
         i.layout
             .order
@@ -1063,10 +1091,10 @@ impl MemoryService {
             .filter(|d| {
                 i.docs.get(*d).is_some_and(|dd| {
                     dd.words >= 12
-                        && store
-                            .scenes
-                            .get(*d)
-                            .is_none_or(|c| c.source_hash != dd.text_hash)
+                        && store.scenes.get(*d).is_none_or(|c| {
+                            c.source_hash != dd.text_hash
+                                || want.iter().any(|w| !c.extractors.iter().any(|x| x == w))
+                        })
                 })
             })
             .cloned()
@@ -1077,7 +1105,7 @@ impl MemoryService {
         let cfg = self.config();
         let (pending, total, current, last_error, has_project, entries, vectors, model, busy) = {
             let i = lock(&self.inner);
-            let p = Self::pending_docs(&i);
+            let p = Self::pending_docs(&i, &self.wanted_extractors());
             (
                 p.len() as u32,
                 i.layout
@@ -1266,11 +1294,7 @@ impl MemoryService {
                 kind: "event".into(),
                 id: ev.id.clone(),
                 label: ev.title.clone(),
-                detail: ev
-                    .story_time
-                    .as_ref()
-                    .map(|t| t.label.clone())
-                    .unwrap_or_default(),
+                detail: story_time_text(ev.story_time.as_ref()),
                 status: Some(ev.status),
                 created_by: Some(ev.created_by),
                 updated: ev.updated.clone(),

@@ -73,7 +73,7 @@ impl MemoryService {
             .as_ref()
             .and_then(|f| i.layout.order.iter().position(|d| d == f))
             .unwrap_or(0) as i64;
-        Self::pending_docs(&i)
+        Self::pending_docs(&i, &self.wanted_extractors())
             .into_iter()
             .filter(|d| i.changed_at.get(d).is_none_or(|t| t.elapsed() >= settle))
             .filter(|d| i.retry_after.get(d).is_none_or(|t| now >= *t))
@@ -226,6 +226,7 @@ impl MemoryService {
     ) -> Result<()> {
         let project = self.story.project_info()?;
         let meta = self.story.document_meta(doc)?;
+        let want = extract::enabled(self.config().extract_tension);
         let (data, known, generation): (DocData, Vec<(String, String)>, u64) = {
             let mut i = lock(&self.inner);
             let data = i
@@ -267,6 +268,7 @@ impl MemoryService {
                 project.project_type,
                 &project.title,
                 priority,
+                &want,
             )
             .await;
         let finish = |me: &Self| {
@@ -307,6 +309,7 @@ impl MemoryService {
             } else {
                 let all: String = Self::memory_text(&i);
                 let opts = MergeOptions {
+                    extractors: want.iter().map(|x| x.id.to_string()).collect(),
                     flag_conflicts: self.config().flag_conflicts,
                     project_type_fiction: project.project_type != ProjectType::NonFiction,
                 };
@@ -350,15 +353,17 @@ impl MemoryService {
         pt: ProjectType,
         project_title: &str,
         priority: Priority,
+        extractors: &[&'static extract::Extractor],
     ) -> std::result::Result<Option<Vec<Extraction>>, (MarginError, Duration)> {
         let info = SceneInfo {
+            extractors,
             project_title,
             project_type: pt,
             title,
             pov,
             known,
         };
-        let schema = extract::schema(pt);
+        let schema = extract::schema(pt, extractors);
         let mut out = vec![];
         for w in extract::windows(&data.paras) {
             let prompt = extract::build_prompt(&info, &data.paras, w);
@@ -505,7 +510,7 @@ impl MemoryService {
                     }
                 }
                 if parts.len() >= 2
-                    && Self::pending_docs(&i).is_empty()
+                    && Self::pending_docs(&i, &self.wanted_extractors()).is_empty()
                     && store
                         .synopsis
                         .as_ref()

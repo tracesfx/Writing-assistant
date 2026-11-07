@@ -82,6 +82,8 @@ cmd!(mentions_by_entity(id: String) -> Vec<MentionRow> =
 cmd!(mentions_matrix(types: Vec<String>) -> MentionMatrix =
     |m| blocking(move || m.mentions_matrix(&types)).await);
 cmd!(timeline_events() -> Vec<EventView> = |m| blocking(move || m.timeline_events()).await);
+cmd!(event_set_order(id: String, order: Option<f64>) -> () =
+    |m| blocking(move || m.set_event_order(&id, order)).await);
 cmd!(threads_list(status: Option<ThreadStatus>) -> Vec<ThreadView> =
     |m| blocking(move || m.threads_list(status)).await);
 cmd!(scene_cards() -> Vec<SceneCardView> = |m| blocking(move || m.scene_cards()).await);
@@ -118,3 +120,5 @@ cmd!(memory_export(dir: String, format: ExportFormat) -> Vec<String> =
     |m| blocking(move || m.export(&PathBuf::from(dir), format)).await);
 cmd!(memory_import(path: String) -> u32 =
     |m| blocking(move || m.import_json(&PathBuf::from(path))).await);
+cmd!(insight_export(dir: String, name: String, data: Vec<u8>) -> String =
+    |_m| blocking(move || crate::memory::export::write_insight_file(&PathBuf::from(dir), &name, &data)).await);

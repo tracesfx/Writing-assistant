@@ -226,6 +226,13 @@ pub struct MemoryConfig {
     pub embedding_port: u32,
     /// Start the embedding server when a project opens.
     pub embedding_auto_start: bool,
+    /// Also rate each scene's tension, 0-10, while reading it (SPEC §10 Structure overview).
+    #[serde(default = "default_true")]
+    pub extract_tension: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for MemoryConfig {
@@ -240,6 +247,7 @@ impl Default for MemoryConfig {
             embedding_model: String::new(),
             embedding_port: 8082,
             embedding_auto_start: false,
+            extract_tension: true,
         }
     }
 }

@@ -197,6 +197,10 @@ pub struct SceneCard {
     pub entities_present: Vec<String>,
     pub threads_touched: Vec<String>,
     pub metrics: BTreeMap<String, f64>,
+    /// Extractors this reading asked for (`tension`), so a card the model could
+    /// not answer is not read again for ever.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extractors: Vec<String>,
     /// Hash of the scene text this card was made from (dirty detection).
     pub source_hash: String,
     pub indexed_at: String,

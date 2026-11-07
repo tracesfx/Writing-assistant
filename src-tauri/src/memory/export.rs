@@ -257,6 +257,7 @@ impl MemoryService {
             "id",
             "title",
             "story_time",
+            "story_order",
             "scene",
             "entities",
             "status",
@@ -270,6 +271,11 @@ impl MemoryService {
                 e.story_time
                     .as_ref()
                     .map(|t| t.label.clone())
+                    .unwrap_or_default(),
+                e.story_time
+                    .as_ref()
+                    .and_then(|t| t.order)
+                    .map(|o| o.to_string())
                     .unwrap_or_default(),
                 e.narrative_pos.as_deref().map(scene).unwrap_or_default(),
                 e.entities
@@ -584,5 +590,53 @@ mod tests {
     #[test]
     fn graphml_is_escaped() {
         assert_eq!(xml("a<b & \"c\">"), "a&lt;b &amp; &quot;c&quot;&gt;");
+    }
+}
+
+/// Save a chart or its data from an Insights view (SPEC §10: CSV and PNG/SVG).
+/// The author picked `dir` in the native folder picker. The name must be a plain
+/// file name with one of the export extensions, and an existing file is never
+/// overwritten: a number is added instead.
+pub fn write_insight_file(dir: &Path, name: &str, bytes: &[u8]) -> Result<String> {
+    let ok_name = !name.is_empty()
+        && name.len() <= 120
+        && !name.contains(['/', '\\', ':'])
+        && !name.starts_with('.')
+        && name
+            .rsplit_once('.')
+            .is_some_and(|(_, ext)| matches!(ext, "csv" | "png" | "svg"));
+    if !ok_name {
+        return Err(MarginError::Invalid(format!(
+            "not an export file name: {name}"
+        )));
+    }
+    fs::create_dir_all(dir)?;
+    let (stem, ext) = name.rsplit_once('.').unwrap_or((name, ""));
+    let mut path = dir.join(name);
+    let mut n = 1;
+    while path.exists() {
+        n += 1;
+        path = dir.join(format!("{stem} ({n}).{ext}"));
+    }
+    atomic_write(&path, bytes)?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[cfg(test)]
+mod insight_file_tests {
+    use super::*;
+
+    #[test]
+    fn names_are_plain_and_nothing_is_overwritten() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = write_insight_file(tmp.path(), "presence.csv", b"a").unwrap();
+        let b = write_insight_file(tmp.path(), "presence.csv", b"b").unwrap();
+        assert!(a.ends_with("presence.csv") && b.ends_with("presence (2).csv"));
+        assert_eq!(fs::read(&a).unwrap(), b"a");
+        for bad in [
+            "../x.csv", "a/b.png", "x.exe", ".csv", "", "C:x.svg", "noext",
+        ] {
+            assert!(write_insight_file(tmp.path(), bad, b"x").is_err(), "{bad}");
+        }
     }
 }

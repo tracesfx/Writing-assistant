@@ -4,7 +4,9 @@
  */
 import type {
   CommandContribution,
+  InsightsViewContribution,
   MarginTabContribution,
+  MemoryExtractorContribution,
   ModuleManifest,
   SettingsPageContribution,
   SidebarPanelContribution,
@@ -21,6 +23,8 @@ export interface Registry {
   views: Map<string, Owned<WorkspaceViewContribution>>;
   panels: Owned<SidebarPanelContribution>[];
   marginTabs: Owned<MarginTabContribution>[];
+  insightsViews: Owned<InsightsViewContribution>[];
+  memoryExtractors: Owned<MemoryExtractorContribution>[];
   statusItems: Owned<StatusBarItemContribution>[];
   settingsPages: Owned<SettingsPageContribution>[];
   commands: Map<string, Owned<CommandContribution>>;
@@ -32,6 +36,8 @@ export function buildRegistry(modules: ModuleManifest[], isEnabled: (m: ModuleMa
   const views = new Map<string, Owned<WorkspaceViewContribution>>();
   const panels: Owned<SidebarPanelContribution>[] = [];
   const marginTabs: Owned<MarginTabContribution>[] = [];
+  const insightsViews: Owned<InsightsViewContribution>[] = [];
+  const memoryExtractors: Owned<MemoryExtractorContribution>[] = [];
   const statusItems: Owned<StatusBarItemContribution>[] = [];
   const settingsPages: Owned<SettingsPageContribution>[] = [];
   const commands = new Map<string, Owned<CommandContribution>>();
@@ -52,6 +58,11 @@ export function buildRegistry(modules: ModuleManifest[], isEnabled: (m: ModuleMa
     }
     for (const p of c.sidebarPanels ?? []) panels.push({ ...p, moduleId: m.id });
     for (const t of c.marginTabs ?? []) marginTabs.push({ ...t, moduleId: m.id });
+    for (const v of c.insightsViews ?? []) {
+      if (insightsViews.some((x) => x.id === v.id)) console.error(`[margin] duplicate insights view ${v.id} from ${m.id}`);
+      else insightsViews.push({ ...v, moduleId: m.id });
+    }
+    for (const x of c.memoryExtractors ?? []) memoryExtractors.push({ ...x, moduleId: m.id });
     for (const s of c.statusBarItems ?? []) statusItems.push({ ...s, moduleId: m.id });
     for (const s of c.settingsPages ?? []) settingsPages.push({ ...s, moduleId: m.id });
     for (const cmd of c.commands ?? []) {
@@ -68,6 +79,8 @@ export function buildRegistry(modules: ModuleManifest[], isEnabled: (m: ModuleMa
     views,
     panels,
     marginTabs,
+    insightsViews,
+    memoryExtractors,
     statusItems,
     settingsPages,
     commands,

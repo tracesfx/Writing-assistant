@@ -12,6 +12,7 @@ import {
   type BinderTree,
   type ProjectInfo,
   setMarginTabs,
+  setInsights,
 } from "@margin/sdk";
 
 import { wireProjectEvents } from "../sdk/project";
@@ -75,6 +76,7 @@ export function App() {
   useEffect(() => {
     useShellUi.setState({ registry });
     setMarginTabs(registry.marginTabs);
+    setInsights(registry.insightsViews, registry.memoryExtractors);
     useWorkbench.setState({
       viewFor: (k) => registry.viewFor(k),
       panelSide: (id) => registry.panels.find((p) => p.id === id)?.side,

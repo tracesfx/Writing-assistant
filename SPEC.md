@@ -60,6 +60,11 @@ Everything runs on the author's machine. Nothing leaves `localhost`.
 | "To note" (M4) | A scene has no notes field (the file format is unchanged), so "To note" appends to a note document named "<scene> — notes" in the Notes section, created on first use. Pins live in `memory/ideas.json` |
 | Context log ids (M4) | A context-log entry is named by its request's job id (a ULID), so a card's "Why?" and `Ctrl+Shift+L` open exactly that request |
 | Memory exclusions (M4) | "Forget this document" is a list in `memory/settings.json`. Documents with AI off are excluded too |
+| Insights views (M5) | Insights is a workspace view whose own extension point, `insightsViews`, lists the views other modules contribute (§5.3). Each of the six reference views is its own module folder (`src/modules/insights-*`); the module list is found with `import.meta.glob`, so a new view is one new folder (proven by `docs/hello-view/`). Charts use Apache ECharts and the relationship graph Cytoscape.js, both bundled and loaded only when a view first draws. Shared plumbing (the themed chart, export bar, data hook) lives in the SDK, because modules may not import each other |
+| Insights data (M5) | Views read only through the SDK. They re-read on `memory.updated`, `binder.changed` and `stats.updated`, batched over 250 ms, and not while hidden. Every view exports its data as CSV, and its chart as PNG and SVG, into a folder the author picks (the native folder picker, no confirmation); an existing file is never overwritten. Every item opens its passage or entry in at most two clicks: a heatmap cell, a graph relation, a timeline event, a thread dot, a chapter bar |
+| `tension` extractor (M5) | The first `memoryExtractors` entry. The reading of a scene also reports `g_metrics.a_tension`, an integer 0-10, in the same grammar-constrained call (no second call), stored as the scene card's `metrics.tension`. Scenes are averaged per chapter weighted by words. It is on by default (Settings → Memory); a card made before it was on, or while it was off, is read again once it is switched on (the card records the extractors it asked for in `extractors`, so a scene the model could not rate is not re-read for ever). An extractor is Rust (`memory::extract::EXTRACTORS`); the module declares the metric so the views offer it |
+| Story order of events (M5) | The model reports an event's story time only as a label ("that night"), so a Timeline with real story order needs the author: the Timeline view moves an event earlier or later in story time. That sets `storyTime.order` (a number on the scale of narrative position, 1 = the first event told) and, as an author action, makes the event canon, so a later reading of its scene leaves it alone. Events without a number sit where the book tells them (hollow dots) |
+| Relationship graph "as of chapter N" (M5) | A relation is shown when the passage it was read from is in a chapter at or before N; a relation with no recorded passage is always shown |
 
 ---
 
@@ -217,12 +222,13 @@ Each module lives in `src/modules/<name>/` with a `module.ts` manifest declaring
 | `workspaceViews` | full-size tab: Insights → Relationship Graph |
 | `sidebarPanels` | docked side panel: Binder (v1 consumer); later Outline, Bible browser, Search results |
 | `marginTabs` | a tab in the Margin panel |
+| `insightsViews` | a view in the Insights workspace (M5): Writing progress, Character presence, … |
 | `inspectorSections` | extra section in the document/entity inspector |
 | `commands` | command-palette entries + default keybindings |
 | `statusBarItems` | e.g. sprint timer |
 | `settingsPages` | module settings |
 | `aiTasks` | Registered AI job: prompt template, JSON schema, priority, trigger (manual / idle / on-save), and output handler. Future editorial feedback plugs in here |
-| `memoryExtractors` | Extra fields extracted per scene (e.g. a `tension` metric, 0–10). Produces new `metrics` keys automatically available to charts |
+| `memoryExtractors` | Extra fields extracted per scene (e.g. a `tension` metric, 0–10). Produces new `metrics` keys automatically available to charts (live in M5: `tension`) |
 | `exporters` | an output format (Rust trait on the backend + UI options) |
 | `bibleTypes` | new entry types with field schemas (e.g. "Magic system", "Spaceship") |
 
@@ -765,10 +771,10 @@ Build order puts quality of life and the framework first. Each milestone ends wi
 - Ideas / Ask / Phrasing tabs
 - ✅ "Ask my book" answers with correct citations on a 50k-word test manuscript. Acceptance checks 9, 10 and 11 (see `docs/progress.md`).
 
-**M5 — Insights workspace**
+**M5 — Insights workspace** ✅ (2026-11-06)
 - The six reference views as independent modules
 - `memoryExtractors` example (`tension` metric) feeding the Structure view
-- ✅ A new view can be added by creating one module folder only. Proven by a sample "Hello view" module in `docs/`.
+- ✅ A new view can be added by creating one module folder only. Proven by a sample "Hello view" module in `docs/`. Acceptance results in `docs/progress.md`.
 
 **M6 — Formatting and export**
 - Templates, front/back matter, Typst page view and preview
